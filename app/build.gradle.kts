@@ -1,6 +1,9 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.dagger.hilt.android")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -43,9 +46,6 @@ android {
         compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
 
     packaging {
         resources {
@@ -81,6 +81,21 @@ dependencies {
 
     // DataStore for settings
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // QR Code scanning
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("androidx.camera:camera-camera2:1.4.0")
+    implementation("androidx.camera:camera-lifecycle:1.4.0")
+    implementation("androidx.camera:camera-view:1.4.0")
+    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
+
+    // Voice Activity Detection (Silero VAD - DNN based, more accurate)
+    implementation("com.github.gkonovalov.android-vad:silero:2.0.10")
+
+    // Hilt DI
+    implementation("com.google.dagger:hilt-android:2.56")
+    ksp("com.google.dagger:hilt-compiler:2.56")
+    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")

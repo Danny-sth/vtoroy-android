@@ -1,25 +1,20 @@
 package com.jarvis.android.service
 
-import android.app.Notification
-import android.app.PendingIntent
+import android.app.AppOpsManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Process
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import com.jarvis.android.JarvisApplication
 import com.jarvis.android.JarvisState
-import com.jarvis.android.MainActivity
-import com.jarvis.android.R
-import com.jarvis.android.audio.AudioPlayer
-import com.jarvis.android.audio.AudioRecorder
 import com.jarvis.android.data.SettingsRepository
-import com.jarvis.android.network.JarvisApiClient
 import com.jarvis.android.wakeword.WakeWordManager
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,33 +23,46 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.io.File
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class JarvisListenerService : Service() {
 
     companion object {
         private const val TAG = "JarvisListenerService"
-        private const val NOTIFICATION_ID = 1
         const val ACTION_START = "com.jarvis.android.START"
         const val ACTION_STOP = "com.jarvis.android.STOP"
+        private const val WAKE_LOCK_TIMEOUT_MS = 60 * 60 * 1000L // 1 hour
     }
 
+    @Inject lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var notificationManager: JarvisNotificationManager
+    @Inject lateinit var voiceCommandProcessor: VoiceCommandProcessor
+
     private val binder = LocalBinder()
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private lateinit var settingsRepository: SettingsRepository
     private var wakeWordManager: WakeWordManager? = null
-    private lateinit var audioRecorder: AudioRecorder
-    private lateinit var audioPlayer: AudioPlayer
-    private val apiClient = JarvisApiClient()
-
     private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile
+    private var isWakeWordInitialized = false
 
     private val _state = MutableStateFlow(JarvisState.IDLE)
     val state: StateFlow<JarvisState> = _state
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
+
+    private val stateCallback = object : VoiceCommandProcessor.StateCallback {
+        override fun onStateChanged(state: JarvisState) {
+            _state.value = state
+            notificationManager.updateNotification(state)
+        }
+
+        override fun onError(message: String) {
+            _errorMessage.value = message
+        }
+    }
 
     inner class LocalBinder : Binder() {
         fun getService(): JarvisListenerService = this@JarvisListenerService
@@ -65,11 +73,10 @@ class JarvisListenerService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
-        settingsRepository = SettingsRepository(this)
-        audioRecorder = AudioRecorder(this)
-        audioPlayer = AudioPlayer(this)
-        audioPlayer.initialize()
+        voiceCommandProcessor.initializePlayer()
         acquireWakeLock()
+        // Initialize wake word on bind (not just on startCommand)
+        initializeWakeWord()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -79,85 +86,91 @@ class JarvisListenerService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> {
-                startForegroundServiceWithNotification()
-                initializeWakeWord()
-            }
         }
-        return START_STICKY
+        // Don't start as foreground - only work when app is open
+        return START_NOT_STICKY
     }
 
     private fun startForegroundServiceWithNotification() {
-        val notification = createNotification()
+        val notification = notificationManager.createNotification(_state.value)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            startForeground(
+                JarvisNotificationManager.NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
         } else {
-            startForeground(NOTIFICATION_ID, notification)
+            startForeground(JarvisNotificationManager.NOTIFICATION_ID, notification)
         }
-    }
-
-    private fun createNotification(): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
-        )
-        val stopIntent = PendingIntent.getService(
-            this, 0,
-            Intent(this, JarvisListenerService::class.java).apply { action = ACTION_STOP },
-            PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, JarvisApplication.CHANNEL_ID)
-            .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getNotificationText())
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentIntent(pendingIntent)
-            .addAction(0, getString(R.string.stop_service), stopIntent)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
-    }
-
-    private fun getNotificationText(): String {
-        return when (_state.value) {
-            JarvisState.IDLE -> getString(R.string.notification_text)
-            JarvisState.LISTENING, JarvisState.RECORDING -> getString(R.string.status_listening)
-            JarvisState.PROCESSING -> getString(R.string.status_processing)
-            JarvisState.PLAYING -> getString(R.string.status_playing)
-            JarvisState.ERROR -> getString(R.string.status_error)
-        }
-    }
-
-    private fun updateNotification() {
-        val notification = createNotification()
-        val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-        nm.notify(NOTIFICATION_ID, notification)
     }
 
     private fun initializeWakeWord() {
+        if (isWakeWordInitialized) {
+            Log.d(TAG, "Wake word already initialized, skipping")
+            return
+        }
+        isWakeWordInitialized = true
         serviceScope.launch {
-            try {
-                val apiKey = settingsRepository.porcupineApiKey.first()
-                if (apiKey.isBlank()) {
-                    _state.value = JarvisState.ERROR
-                    _errorMessage.value = "Porcupine API key not configured"
-                    return@launch
-                }
-                wakeWordManager = WakeWordManager(
-                    context = this@JarvisListenerService,
-                    accessKey = apiKey,
-                    onWakeWordDetected = { onWakeWordDetected() },
-                    onError = { error ->
-                        _state.value = JarvisState.ERROR
-                        _errorMessage.value = error
-                    }
-                )
-                wakeWordManager?.start()
-                _state.value = JarvisState.IDLE
-                Log.d(TAG, "Wake word manager started")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing wake word", e)
+            startWakeWordManager()
+        }
+    }
+
+    private fun isBackgroundRecordingAllowed(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_RECORD_AUDIO,
+                Process.myUid(),
+                packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_RECORD_AUDIO,
+                Process.myUid(),
+                packageName
+            )
+        }
+        // MODE_ALLOWED = 0, MODE_IGNORED = 1, MODE_ERRORED = 2, MODE_DEFAULT = 3, MODE_FOREGROUND = 4
+        Log.d(TAG, "RECORD_AUDIO appops mode: $mode")
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private suspend fun startWakeWordManager() {
+        try {
+            val apiKey = settingsRepository.porcupineApiKey.first()
+            if (apiKey.isBlank()) {
                 _state.value = JarvisState.ERROR
-                _errorMessage.value = "Error: ${e.message}"
+                _errorMessage.value = "Porcupine API key not configured"
+                return
             }
+
+            // Check if background recording is allowed
+            if (!isBackgroundRecordingAllowed()) {
+                Log.w(TAG, "Background recording not allowed by system")
+                _state.value = JarvisState.ERROR
+                _errorMessage.value = "Background mic blocked. Enable in MIUI Settings → Apps → Jarvis → Permissions → Microphone → Allow always"
+                return
+            }
+
+            wakeWordManager?.stop()
+            wakeWordManager = WakeWordManager(
+                context = this@JarvisListenerService,
+                accessKey = apiKey,
+                onWakeWordDetected = { onWakeWordDetected() },
+                onError = { error ->
+                    _state.value = JarvisState.ERROR
+                    _errorMessage.value = error
+                }
+            )
+            wakeWordManager?.start()
+            _state.value = JarvisState.IDLE
+            notificationManager.updateNotification(_state.value)
+            Log.d(TAG, "Wake word manager started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing wake word", e)
+            _state.value = JarvisState.ERROR
+            _errorMessage.value = "Error: ${e.message}"
         }
     }
 
@@ -169,75 +182,21 @@ class JarvisListenerService : Service() {
     private suspend fun processVoiceCommand() {
         try {
             wakeWordManager?.stop()
-            _state.value = JarvisState.LISTENING
-            updateNotification()
-
-            val audioFile = File(cacheDir, "voice_command.wav")
-            val success = audioRecorder.recordUntilSilence(audioFile)
-
-            if (!success || !audioFile.exists() || audioFile.length() == 0L) {
-                Log.e(TAG, "Recording failed")
-                restartWakeWord()
-                return
-            }
-
-            Log.d(TAG, "Recording complete: ${audioFile.length()} bytes")
-
-            _state.value = JarvisState.PROCESSING
-            updateNotification()
-
-            val serverUrl = settingsRepository.serverUrl.first()
-            val authToken = settingsRepository.authToken.first()
-            val result = apiClient.sendVoiceCommand(serverUrl, authToken, audioFile)
-
-            when (result) {
-                is JarvisApiClient.ApiResult.Success -> {
-                    Log.d(TAG, "Received response: ${result.audioData.size} bytes")
-                    _state.value = JarvisState.PLAYING
-                    updateNotification()
-                    audioPlayer.playAudio(result.audioData)
-                }
-                is JarvisApiClient.ApiResult.Error -> {
-                    Log.e(TAG, "API error: ${result.message}")
-                    _errorMessage.value = result.message
-                }
-            }
-
-            audioFile.delete()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error processing voice command", e)
-            _errorMessage.value = "Error: ${e.message}"
+            wakeWordManager = null
+            voiceCommandProcessor.processVoiceCommand(stateCallback)
         } finally {
-            restartWakeWord()
-        }
-    }
-
-    private fun restartWakeWord() {
-        serviceScope.launch {
-            try {
-                val apiKey = settingsRepository.porcupineApiKey.first()
-                wakeWordManager = WakeWordManager(
-                    context = this@JarvisListenerService,
-                    accessKey = apiKey,
-                    onWakeWordDetected = { onWakeWordDetected() },
-                    onError = { error ->
-                        _state.value = JarvisState.ERROR
-                        _errorMessage.value = error
-                    }
-                )
-                wakeWordManager?.start()
-                _state.value = JarvisState.IDLE
-                updateNotification()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error restarting wake word", e)
-            }
+            isWakeWordInitialized = false
+            initializeWakeWord()
         }
     }
 
     private fun acquireWakeLock() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Jarvis::WakeWordLock")
-        wakeLock?.acquire()
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "jarvis:wakeword_detection"
+        )
+        wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
     }
 
     private fun releaseWakeLock() {
@@ -248,8 +207,8 @@ class JarvisListenerService : Service() {
     override fun onDestroy() {
         Log.d(TAG, "Service destroyed")
         wakeWordManager?.stop()
-        audioRecorder.stopRecording()
-        audioPlayer.release()
+        voiceCommandProcessor.stopRecording()
+        voiceCommandProcessor.releasePlayer()
         releaseWakeLock()
         serviceScope.cancel()
         super.onDestroy()

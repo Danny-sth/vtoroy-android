@@ -14,22 +14,26 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-class AudioRecorder(private val context: Context) {
+class AudioRecorder(
+    private val context: Context,
+    private val vad: VoiceActivityDetectorInterface
+) : AudioRecorderInterface {
 
     companion object {
         private const val TAG = "AudioRecorder"
         private const val SAMPLE_RATE = 16000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        private const val MAX_RECORDING_MS = 10_000L // Max 10 seconds
+        private const val MIN_RECORDING_MS = 1_000L  // Min 1 second
     }
 
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
-    private val vad = VoiceActivityDetector()
 
     private val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
 
-    suspend fun recordUntilSilence(outputFile: File): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun recordUntilSilence(outputFile: File): Boolean = withContext(Dispatchers.IO) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -52,37 +56,46 @@ class AudioRecorder(private val context: Context) {
             }
 
             val rawFile = File(context.cacheDir, "temp_raw.pcm")
-            val outputStream = FileOutputStream(rawFile)
-
-            audioRecord?.startRecording()
-            isRecording = true
-            vad.startRecording()
-
-            val buffer = ShortArray(bufferSize / 2)
             var totalBytesWritten = 0
 
-            Log.d(TAG, "Started recording")
+            FileOutputStream(rawFile).use { outputStream ->
+                audioRecord?.startRecording()
+                isRecording = true
+                vad.startRecording()
 
-            while (isRecording && isActive) {
-                val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+                val buffer = ShortArray(bufferSize / 2)
+                val recordingStartTime = System.currentTimeMillis()
 
-                if (readSize > 0) {
-                    val byteBuffer = ByteArray(readSize * 2)
-                    for (i in 0 until readSize) {
-                        byteBuffer[i * 2] = (buffer[i].toInt() and 0xFF).toByte()
-                        byteBuffer[i * 2 + 1] = (buffer[i].toInt() shr 8 and 0xFF).toByte()
+                Log.d(TAG, "Started recording (max ${MAX_RECORDING_MS}ms)")
+
+                while (isRecording && isActive) {
+                    val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+                    val elapsedMs = System.currentTimeMillis() - recordingStartTime
+
+                    if (readSize > 0) {
+                        val byteBuffer = ByteArray(readSize * 2)
+                        for (i in 0 until readSize) {
+                            byteBuffer[i * 2] = (buffer[i].toInt() and 0xFF).toByte()
+                            byteBuffer[i * 2 + 1] = (buffer[i].toInt() shr 8 and 0xFF).toByte()
+                        }
+                        outputStream.write(byteBuffer)
+                        totalBytesWritten += byteBuffer.size
+
+                        // Check VAD for silence (only after min recording time)
+                        if (elapsedMs >= MIN_RECORDING_MS && vad.processAudioBuffer(buffer, readSize)) {
+                            Log.d(TAG, "Silence detected after ${elapsedMs}ms, stopping recording")
+                            break
+                        }
                     }
-                    outputStream.write(byteBuffer)
-                    totalBytesWritten += byteBuffer.size
 
-                    if (vad.processAudioBuffer(buffer, readSize)) {
-                        Log.d(TAG, "Silence detected, stopping recording")
+                    // Check max recording time
+                    if (elapsedMs >= MAX_RECORDING_MS) {
+                        Log.d(TAG, "Max recording time reached (${MAX_RECORDING_MS}ms), stopping")
                         break
                     }
                 }
             }
 
-            outputStream.close()
             stopRecordingInternal()
 
             Log.d(TAG, "Recording stopped, total bytes: $totalBytesWritten")
@@ -103,7 +116,7 @@ class AudioRecorder(private val context: Context) {
         }
     }
 
-    fun stopRecording() {
+    override fun stopRecording() {
         isRecording = false
         vad.stopRecording()
     }

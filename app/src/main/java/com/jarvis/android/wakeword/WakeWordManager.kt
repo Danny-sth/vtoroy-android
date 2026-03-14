@@ -6,7 +6,10 @@ import ai.picovoice.porcupine.PorcupineException
 import ai.picovoice.porcupine.PorcupineManager
 import ai.picovoice.porcupine.PorcupineManagerCallback
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 
 class WakeWordManager(
     private val context: Context,
@@ -15,32 +18,47 @@ class WakeWordManager(
     private val onError: (String) -> Unit
 ) {
     private var porcupineManager: PorcupineManager? = null
-    private var isListening = false
+    private val isListening = AtomicBoolean(false)
+    private val isStopping = AtomicBoolean(false)
+    private val wakeWordTriggered = AtomicBoolean(false)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         private const val TAG = "WakeWordManager"
     }
 
     fun start() {
-        if (isListening) {
-            Log.d(TAG, "Already listening")
+        if (isListening.get() || isStopping.get()) {
+            Log.d(TAG, "Already listening or stopping")
             return
         }
+
+        wakeWordTriggered.set(false)
 
         try {
             porcupineManager = PorcupineManager.Builder()
                 .setAccessKey(accessKey)
                 .setKeyword(Porcupine.BuiltInKeyword.JARVIS)
-                .setSensitivity(0.7f)
+                .setSensitivity(0.85f)
                 .build(context, object : PorcupineManagerCallback {
                     override fun invoke(keywordIndex: Int) {
-                        Log.d(TAG, "Wake word detected!")
-                        onWakeWordDetected()
+                        // Check all flags before processing
+                        if (!isListening.get() || isStopping.get()) {
+                            return
+                        }
+                        if (wakeWordTriggered.compareAndSet(false, true)) {
+                            Log.d(TAG, "Wake word detected!")
+                            // Stop listening immediately before posting callback
+                            isListening.set(false)
+                            mainHandler.post {
+                                onWakeWordDetected()
+                            }
+                        }
                     }
                 })
 
             porcupineManager?.start()
-            isListening = true
+            isListening.set(true)
             Log.d(TAG, "Started listening for wake word")
         } catch (e: PorcupineActivationException) {
             Log.e(TAG, "Porcupine activation error", e)
@@ -55,16 +73,41 @@ class WakeWordManager(
     }
 
     fun stop() {
+        if (!isListening.getAndSet(false) && !wakeWordTriggered.get()) {
+            return
+        }
+
+        if (!isStopping.compareAndSet(false, true)) {
+            Log.d(TAG, "Already stopping")
+            return
+        }
+
         try {
-            porcupineManager?.stop()
-            porcupineManager?.delete()
+            val manager = porcupineManager
             porcupineManager = null
-            isListening = false
+
+            if (manager != null) {
+                try {
+                    manager.stop()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error stopping Porcupine", e)
+                }
+
+                // Wait for audio thread to fully stop before deleting
+                Thread.sleep(500)
+
+                try {
+                    manager.delete()
+                    Log.d(TAG, "Porcupine resources released")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error deleting Porcupine", e)
+                }
+            }
             Log.d(TAG, "Stopped listening")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping wake word detection", e)
+        } finally {
+            isStopping.set(false)
         }
     }
 
-    fun isActive(): Boolean = isListening
+    fun isActive(): Boolean = isListening.get() && !isStopping.get()
 }

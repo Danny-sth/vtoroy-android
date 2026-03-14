@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -14,19 +15,25 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class SettingsRepository(private val context: Context) {
 
     private object PreferencesKeys {
-        val SERVER_URL = stringPreferencesKey("server_url")
         val AUTH_TOKEN = stringPreferencesKey("auth_token")
+        val TELEGRAM_ID = longPreferencesKey("telegram_id")
+        val TOKEN_EXPIRES_AT = stringPreferencesKey("token_expires_at")
         val PORCUPINE_API_KEY = stringPreferencesKey("porcupine_api_key")
     }
-
-    val serverUrl: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[PreferencesKeys.SERVER_URL] ?: ""
-        }
 
     val authToken: Flow<String> = context.dataStore.data
         .map { preferences ->
             preferences[PreferencesKeys.AUTH_TOKEN] ?: ""
+        }
+
+    val telegramId: Flow<Long> = context.dataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.TELEGRAM_ID] ?: 0L
+        }
+
+    val tokenExpiresAt: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.TOKEN_EXPIRES_AT] ?: ""
         }
 
     val porcupineApiKey: Flow<String> = context.dataStore.data
@@ -34,17 +41,24 @@ class SettingsRepository(private val context: Context) {
             preferences[PreferencesKeys.PORCUPINE_API_KEY] ?: ""
         }
 
-    val hasValidSettings: Flow<Boolean> = context.dataStore.data
+    val isAuthenticated: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
-            val url = preferences[PreferencesKeys.SERVER_URL] ?: ""
             val token = preferences[PreferencesKeys.AUTH_TOKEN] ?: ""
-            val apiKey = preferences[PreferencesKeys.PORCUPINE_API_KEY] ?: ""
-            url.isNotBlank() && token.isNotBlank() && apiKey.isNotBlank()
+            token.isNotBlank()
         }
 
-    suspend fun saveServerUrl(url: String) {
+    val hasValidSettings: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            val token = preferences[PreferencesKeys.AUTH_TOKEN] ?: ""
+            val apiKey = preferences[PreferencesKeys.PORCUPINE_API_KEY] ?: ""
+            token.isNotBlank() && apiKey.isNotBlank()
+        }
+
+    suspend fun saveAuthData(token: String, telegramId: Long, expiresAt: String) {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.SERVER_URL] = url
+            preferences[PreferencesKeys.AUTH_TOKEN] = token
+            preferences[PreferencesKeys.TELEGRAM_ID] = telegramId
+            preferences[PreferencesKeys.TOKEN_EXPIRES_AT] = expiresAt
         }
     }
 
@@ -60,11 +74,11 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveAllSettings(url: String, token: String, apiKey: String) {
+    suspend fun clearAuth() {
         context.dataStore.edit { preferences ->
-            preferences[PreferencesKeys.SERVER_URL] = url
-            preferences[PreferencesKeys.AUTH_TOKEN] = token
-            preferences[PreferencesKeys.PORCUPINE_API_KEY] = apiKey
+            preferences.remove(PreferencesKeys.AUTH_TOKEN)
+            preferences.remove(PreferencesKeys.TELEGRAM_ID)
+            preferences.remove(PreferencesKeys.TOKEN_EXPIRES_AT)
         }
     }
 }
