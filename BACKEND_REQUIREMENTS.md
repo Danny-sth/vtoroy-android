@@ -1,9 +1,9 @@
-# Backend Requirements (jarvis-gateway)
+# Backend Requirements (vtoroy-gateway)
 
-## New endpoint: POST /api/voice
+## Endpoint: POST /api/voice
 
 ### Description
-Endpoint for processing voice commands from Android app. Accepts audio file, processes through OpenClaw (STT -> Agent -> TTS) and returns audio response.
+Endpoint for processing voice commands from Android app. Accepts audio file, processes through Vtoroy (STT -> Agent -> TTS) and returns audio response.
 
 ### Request
 
@@ -13,15 +13,17 @@ Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
 Body:
-  - audio: file (audio/wav or audio/ogg)
+  - audio: file (audio/wav)
 ```
 
 ### Response
 
 **Success (200 OK)**
-```
-Content-Type: audio/ogg
-Body: audio file (OGG/Opus) - TTS response
+```json
+{
+  "text": "response text",
+  "audio": "base64 encoded ogg"
+}
 ```
 
 **Errors**
@@ -31,38 +33,27 @@ Body: audio file (OGG/Opus) - TTS response
 
 ### Processing Logic
 
-```go
-func handleVoice(w http.ResponseWriter, r *http.Request) {
-    // 1. Check authorization (Bearer token)
-    // 2. Get audio file from multipart/form-data
-    // 3. Save to temp file
-    // 4. Call STT (Whisper): /usr/local/bin/whisper-stt
-    // 5. Send text to OpenClaw agent: openclaw agent -m "<text>"
-    // 6. Call TTS (Edge TTS): edge-tts --voice ru-RU-DmitryNeural --text "<response>" --write-media <output>
-    // 7. Return audio file
-    // 8. Clean up temp files
-}
+```
+1. MobileAuth middleware validates Bearer token
+2. Get audio file from multipart/form-data
+3. Save to temp WAV file
+4. STT: whisper-stt CLI → text
+5. Send to Vtoroy agent
+6. TTS: edge-tts CLI → audio
+7. Return JSON with text + base64 audio
+8. Clean up temp files
 ```
 
-### VPS Dependencies (already installed)
-- `/usr/local/bin/whisper-stt` - STT script (whisper-ctranslate2)
-- `edge-tts` - TTS (pip package)
-- `openclaw` - CLI agent
-
-### Add to main.go
-
-```go
-http.HandleFunc("/api/voice", middleware.AuthMiddleware(handlers.VoiceHandler))
-```
+### VPS Dependencies
+- `whisper-stt` — STT CLI (faster-whisper)
+- `edge-tts` — TTS CLI (Microsoft Edge TTS)
+- `ffmpeg` — audio conversion
 
 ### Testing
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer mob_xxx" \
   -F "audio=@test.wav" \
-  https://on-za-menya.online/api/voice \
-  --output response.ogg
-
-ffplay response.ogg
+  https://on-za-menya.online/api/voice
 ```

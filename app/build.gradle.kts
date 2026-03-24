@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.jarvis.android"
+    namespace = "com.vtoroy.android"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.jarvis.android"
+        applicationId = "com.vtoroy.android"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

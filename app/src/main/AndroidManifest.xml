@@ -12,20 +12,20 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
-        android:name=".JarvisApplication"
+        android:name=".VtoroyApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.JarvisAndroid"
+        android:theme="@style/Theme.VtoroyAndroid"
         tools:targetApi="34">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.JarvisAndroid">
+            android:theme="@style/Theme.VtoroyAndroid">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -33,13 +33,13 @@
         </activity>
 
         <service
-            android:name=".service.JarvisListenerService"
+            android:name=".service.VtoroyListenerService"
             android:foregroundServiceType="microphone"
             android:exported="false" />
 
         <!-- Voice Interaction Service for system assistant role -->
         <service
-            android:name=".service.JarvisVoiceInteractionService"
+            android:name=".service.VtoroyVoiceInteractionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true">
             <meta-data
@@ -51,7 +51,7 @@
         </service>
 
         <service
-            android:name=".service.JarvisVoiceInteractionSessionService"
+            android:name=".service.VtoroyVoiceInteractionSessionService"
             android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:exported="true" />
 
@@ -66,7 +66,7 @@
 
         <!-- Accessibility Service for background operation on MIUI -->
         <service
-            android:name=".service.JarvisAccessibilityService"
+            android:name=".service.VtoroyAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter>
@@ -82,7 +82,7 @@
             android:name=".service.AuthReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.jarvis.android.SET_AUTH" />
+                <action android:name="com.vtoroy.android.SET_AUTH" />
             </intent-filter>
         </receiver>
 

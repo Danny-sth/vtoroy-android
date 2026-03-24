@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "JarvisAndroid"
+rootProject.name = "VtoroyAndroid"
 include(":app")
