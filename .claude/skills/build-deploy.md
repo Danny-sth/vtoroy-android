@@ -7,7 +7,7 @@
 ## Build Debug APK
 
 ```bash
-cd /home/danny/Documents/projects/vtoroy-android
+cd /home/danny/Documents/projects/jarvis-android
 ./gradlew assembleDebug
 ```
 
@@ -20,7 +20,7 @@ cd /home/danny/Documents/projects/vtoroy-android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # Or fresh install
-adb uninstall com.vtoroy.android
+adb uninstall com.jarvis.android
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -33,14 +33,14 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ## View Logs
 
 ```bash
-# All Vtoroy logs
-adb logcat | grep -E "Vtoroy|WakeWord|VoiceActivity|ApiClient"
+# All Jarvis logs
+adb logcat | grep -E "Jarvis|WakeWord|VoiceActivity|ApiClient"
 
 # Specific tags
-adb logcat -s VtoroyListenerService:D WakeWordManager:D VoiceActivityDetector:D
+adb logcat -s JarvisListenerService:D WakeWordManager:D VoiceActivityDetector:D
 
 # Clear and follow
-adb logcat -c && adb logcat -s VtoroyListenerService:D
+adb logcat -c && adb logcat -s JarvisListenerService:D
 ```
 
 ## Release Build
@@ -79,7 +79,7 @@ adb devices
 # Settings → Developer Options → USB Debugging
 
 # Uninstall old version first
-adb uninstall com.vtoroy.android
+adb uninstall com.jarvis.android
 ```
 
 ### App crashes on start

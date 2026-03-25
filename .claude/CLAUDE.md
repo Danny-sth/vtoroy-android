@@ -1,4 +1,4 @@
-# Vtoroy Android
+# Jarvis Android
 
 ## Quick Build
 
@@ -10,7 +10,7 @@
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 # View logs
-adb logcat -s WakeWordManager:D VoiceActivityDetector:D VtoroyApiClient:D
+adb logcat -s WakeWordManager:D VoiceActivityDetector:D JarvisApiClient:D
 ```
 
 ## Architecture
@@ -18,13 +18,13 @@ adb logcat -s WakeWordManager:D VoiceActivityDetector:D VtoroyApiClient:D
 ```
 Wake Word (Porcupine "JARVIS")
        ↓
-VtoroyListenerService (foreground)
+JarvisListenerService (foreground)
        ↓
 VoiceCommandProcessor
        ↓ record
 VoiceActivityDetector (Silero VAD, 2s silence)
        ↓
-VtoroyApiClient (POST /api/voice)
+JarvisApiClient (POST /api/voice)
        ↓
 AudioPlayer (ExoPlayer)
 ```
@@ -33,17 +33,16 @@ AudioPlayer (ExoPlayer)
 
 | File | Purpose |
 |------|---------|
-| `service/VtoroyListenerService.kt` | Main foreground service |
+| `service/JarvisListenerService.kt` | Main foreground service |
 | `service/VoiceCommandProcessor.kt` | Recording → API → Playback |
 | `wakeword/WakeWordManager.kt` | Porcupine wrapper |
 | `audio/VoiceActivityDetector.kt` | Silero VAD |
-| `network/VtoroyApiClient.kt` | HTTP client |
+| `network/JarvisApiClient.kt` | HTTP client |
 | `ui/MainScreen.kt` | Compose UI |
 
 ## Critical Notes
 
 1. **Wake word is "JARVIS"** (Porcupine built-in)
-   - Custom "Vtoroy" requires training on console.picovoice.ai
 2. **App-only mode** — mic off when minimized
 3. **Requires Porcupine API key** in settings
 

@@ -25,7 +25,7 @@ adb logcat -s WakeWordManager:D
 
 1. Check Porcupine API key in Settings
 2. Verify microphone permission granted
-3. Speak clearly "JARVIS" (not "Vtoroy")
+3. Speak clearly "JARVIS"
 4. Check for background noise
 
 ## Debug Recording
@@ -43,11 +43,11 @@ adb logcat -s AudioRecorder:D VoiceActivityDetector:D
 ## Debug API Call
 
 ```bash
-adb logcat -s VtoroyApiClient:D
+adb logcat -s JarvisApiClient:D
 
 # Check request/response
-# D VtoroyApiClient: Sending voice to API
-# D VtoroyApiClient: Response: 200 OK
+# D JarvisApiClient: Sending voice to API
+# D JarvisApiClient: Response: 200 OK
 ```
 
 ### API Issues
@@ -56,7 +56,7 @@ adb logcat -s VtoroyApiClient:D
 2. Verify auth token valid
 3. Check backend logs on VPS:
    ```bash
-   ssh root@90.156.230.49 "journalctl -u vtoroy-gateway -n 30"
+   ssh root@90.156.230.49 "journalctl -u jarvis-gateway -n 30"
    ```
 
 ## Debug Playback
@@ -83,7 +83,7 @@ Set auth token via ADB and trigger manually:
 
 ```bash
 # Set token
-adb shell am broadcast -a com.vtoroy.android.SET_AUTH --es token "mob_xxx"
+adb shell am broadcast -a com.jarvis.android.SET_AUTH --es token "mob_xxx"
 
 # Trigger recording (not implemented, use app UI)
 ```

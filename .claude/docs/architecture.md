@@ -1,4 +1,4 @@
-# Vtoroy Android Architecture
+# Jarvis Android Architecture
 
 ## Overview
 
@@ -18,18 +18,18 @@ Android voice command app using Jetpack Compose, Porcupine wake word detection, 
 ## Project Structure
 
 ```
-app/src/main/java/com/vtoroy/android/
-├── VtoroyApplication.kt      # Hilt application
+app/src/main/java/com/jarvis/android/
+├── JarvisApplication.kt      # Hilt application
 ├── MainActivity.kt           # Entry point
-├── VtoroyState.kt            # State enum
+├── JarvisState.kt            # State enum
 ├── service/
-│   ├── VtoroyListenerService.kt      # Foreground service
+│   ├── JarvisListenerService.kt      # Foreground service
 │   ├── VoiceCommandProcessor.kt      # Voice pipeline
-│   ├── VtoroyNotificationManager.kt  # Notifications
-│   ├── VtoroyAccessibilityService.kt # MIUI background
+│   ├── JarvisNotificationManager.kt  # Notifications
+│   ├── JarvisAccessibilityService.kt # MIUI background
 │   └── ...
 ├── network/
-│   └── VtoroyApiClient.kt    # HTTP client
+│   └── JarvisApiClient.kt    # HTTP client
 ├── audio/
 │   ├── AudioRecorder.kt
 │   ├── AudioPlayer.kt        # ExoPlayer
@@ -37,7 +37,7 @@ app/src/main/java/com/vtoroy/android/
 ├── wakeword/
 │   └── WakeWordManager.kt    # Porcupine
 ├── ui/
-│   ├── VtoroyApp.kt          # Navigation
+│   ├── JarvisApp.kt          # Navigation
 │   ├── MainScreen.kt         # Main UI
 │   ├── SettingsScreen.kt     # Settings
 │   └── QrScanner.kt          # QR auth
@@ -59,11 +59,11 @@ IDLE → (wake word) → LISTENING → (silence) → PROCESSING → (response) �
 
 ```
 1. WakeWordManager detects "JARVIS"
-2. VtoroyListenerService triggers recording
+2. JarvisListenerService triggers recording
 3. VoiceCommandProcessor starts AudioRecorder
 4. VoiceActivityDetector monitors for 2s silence
 5. On silence: stop recording, send to API
-6. VtoroyApiClient POST /api/voice with WAV
+6. JarvisApiClient POST /api/voice with WAV
 7. Parse response: text + base64 audio
 8. AudioPlayer plays OGG response
 9. Return to IDLE state
@@ -74,7 +74,7 @@ IDLE → (wake word) → LISTENING → (silence) → PROCESSING → (response) �
 ```
 1. User opens Settings
 2. Scans QR code with gateway URL + code
-3. VtoroyApiClient.verifyQrCode(code)
+3. JarvisApiClient.verifyQrCode(code)
 4. Backend returns: { token, telegram_id, expires_at }
 5. Token stored in DataStore
 6. Token used for /api/voice requests
@@ -113,8 +113,8 @@ IDLE → (wake word) → LISTENING → (silence) → PROCESSING → (response) �
 
 ```kotlin
 android {
-    namespace = "com.vtoroy.android"
-    applicationId = "com.vtoroy.android"
+    namespace = "com.jarvis.android"
+    applicationId = "com.jarvis.android"
     compileSdk = 34
     minSdk = 26
     targetSdk = 34

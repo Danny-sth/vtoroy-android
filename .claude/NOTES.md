@@ -10,14 +10,14 @@ _Empty - add notes as you work_
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-03-24 | Renamed jarvis-android → vtoroy-android | Unified naming |
-| 2026-03-24 | Keep "JARVIS" wake word | Porcupine built-in, custom requires training |
+| 2026-03-24 | Renamed vtoroy-android → jarvis-android | Full rebrand |
+| 2026-03-25 | Using "JARVIS" wake word | Porcupine built-in, best quality |
 
 ## Known Issues
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| Wake word is "JARVIS" | By design | Need custom Porcupine model for "Vtoroy" |
+| - | - | - |
 
 ## Architecture Decisions
 
