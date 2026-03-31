@@ -17,20 +17,33 @@ class AuthReceiver : BroadcastReceiver() {
         const val EXTRA_TOKEN = "token"
         const val EXTRA_TELEGRAM_ID = "telegram_id"
         const val EXTRA_EXPIRES_AT = "expires_at"
+        const val EXTRA_PORCUPINE_KEY = "porcupine_key"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_SET_AUTH) return
 
-        val token = intent.getStringExtra(EXTRA_TOKEN) ?: return
+        val token = intent.getStringExtra(EXTRA_TOKEN)
         val telegramId = intent.getLongExtra(EXTRA_TELEGRAM_ID, 0L)
         val expiresAt = intent.getStringExtra(EXTRA_EXPIRES_AT) ?: ""
+        val porcupineKey = intent.getStringExtra(EXTRA_PORCUPINE_KEY)
 
-        Log.d(TAG, "Received auth: token=${token.take(10)}..., telegramId=$telegramId")
+        Log.d(TAG, "Received auth: token=${token?.take(10)}..., telegramId=$telegramId, hasPorcupineKey=${porcupineKey != null}")
 
         val settingsRepository = SettingsRepository(context)
         CoroutineScope(Dispatchers.IO).launch {
-            settingsRepository.saveAuthData(token, telegramId, expiresAt)
+            // Save auth token if provided
+            if (token != null) {
+                settingsRepository.saveAuthData(token, telegramId, expiresAt)
+                Log.d(TAG, "Auth token saved")
+            }
+
+            // Save Porcupine API key if provided
+            if (porcupineKey != null) {
+                settingsRepository.savePorcupineApiKey(porcupineKey)
+                Log.d(TAG, "Porcupine API key saved")
+            }
+
             Log.d(TAG, "Auth saved successfully")
         }
     }

@@ -1,3 +1,10 @@
+# ⛔⛔⛔ НИКОГДА НИЧЕГО НЕ УПРОЩАТЬ!!! ⛔⛔⛔
+
+**МЫ ДЕЛАЕМ СЛОЖНЫЕ ПРОДУКТЫ! НИКАКИХ ЗАГЛУШЕК И ВРЕМЕННЫХ ПРОСТЫХ РЕШЕНИЙ!**
+**ИСПОЛЬЗУЕМ ТОКЕНЫ МАКСИМАЛЬНО! ПРИОРИТЕТ — КАЧЕСТВО, А НЕ ПРОСТОТА РАЗРАБОТКИ!**
+
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -42,7 +49,7 @@ adb shell am broadcast -a com.jarvis.android.SET_AUTH --es porcupine_key "YOUR_K
 ### Voice Pipeline
 
 ```
-Wake Word (Porcupine "JARVIS")
+Wake Word (Porcupine "JARVIS", sensitivity: 0.5f)
        ↓
 JarvisListenerService (foreground service)
        ↓
@@ -54,8 +61,25 @@ VoiceActivityDetector (Silero VAD, 2s silence timeout)
        ↓
 JarvisApiClient (POST /api/voice → JSON + base64 OGG)
        ↓
+ConversationRepository.refreshMessages() (auto-update UI)
+       ↓
 AudioPlayer (ExoPlayer)
 ```
+
+### Data Sync (Mobile ↔ Telegram)
+
+```
+Voice Command → PostgreSQL (source of truth) → Room DB (cache) → Flow → UI
+                      ↓
+               Telegram (auto-sync via backend goroutines)
+```
+
+**Features:**
+- 📱 Mobile messages appear in Telegram with `[Mobile App]` prefix
+- 🤖 Assistant responses appear in Telegram with `[Jarvis]` prefix
+- 💾 20 message history + Cortex vector memory shared cross-channel
+- 🔄 Pull-on-focus refresh: app loads latest messages when gaining foreground
+- ⚡ Reactive UI: Room DB Flow automatically updates LazyColumn when messages added
 
 ### State Machine
 
@@ -70,14 +94,21 @@ IDLE → (wake word) → LISTENING → (2s silence) → PROCESSING → (API resp
 | File | Purpose |
 |------|---------|
 | `service/JarvisListenerService.kt` | Main foreground service, wake word coordination |
-| `service/VoiceCommandProcessor.kt` | Recording → API → Playback pipeline |
-| `wakeword/WakeWordManager.kt` | Porcupine wrapper (sensitivity: 0.85) |
+| `service/VoiceCommandProcessor.kt` | Recording → API → Playback + auto-refresh |
+| `wakeword/WakeWordManager.kt` | Porcupine wrapper (sensitivity: 0.5f) |
 | `audio/VoiceActivityDetector.kt` | Silero VAD (2s silence, 10s max recording) |
 | `audio/AudioRecorder.kt` | PCM recording, WAV conversion |
 | `audio/AudioPlayer.kt` | ExoPlayer for OGG playback |
-| `network/JarvisApiClient.kt` | OkHttp client, multipart upload |
+| `network/JarvisApiClient.kt` | OkHttp client + conversation API endpoints |
+| `data/ConversationRepository.kt` | Conversation sync (PostgreSQL + Room DB) |
+| `data/local/JarvisDatabase.kt` | Room DB for offline message cache |
+| `data/model/Message.kt` | Message data model |
+| `data/model/Conversation.kt` | Conversation metadata model |
 | `data/SettingsRepository.kt` | DataStore for auth token, Porcupine key |
-| `ui/MainScreen.kt` | Compose UI, lifecycle observer (binds/unbinds service) |
+| `ui/MainScreen.kt` | Compose UI with message history (LazyColumn) |
+| `ui/ConversationViewModel.kt` | ViewModel with reactive Flow (auto-updates) |
+| `ui/components/MessageBubble.kt` | Message UI component |
+| `ui/components/MessagesList.kt` | LazyColumn with auto-scroll |
 | `di/AppModule.kt` | Hilt DI configuration |
 
 ### Project Structure
@@ -87,9 +118,17 @@ app/src/main/java/com/jarvis/android/
 ├── service/          # JarvisListenerService, VoiceCommandProcessor
 ├── wakeword/         # Porcupine WakeWordManager
 ├── audio/            # AudioRecorder, AudioPlayer, VoiceActivityDetector
-├── network/          # JarvisApiClient
-├── ui/               # Compose screens (MainScreen, SettingsScreen, QrScanner)
-├── data/             # SettingsRepository (DataStore)
+├── network/          # JarvisApiClient + API models
+├── data/             # Repositories, Room DB, models
+│   ├── ConversationRepository.kt
+│   ├── SettingsRepository.kt
+│   ├── local/        # Room DB entities, DAOs, database
+│   └── model/        # Message, Conversation data classes
+├── ui/               # Compose screens + ViewModels
+│   ├── MainScreen.kt
+│   ├── ConversationViewModel.kt
+│   ├── SettingsScreen.kt
+│   └── components/   # MessageBubble, MessagesList
 ├── di/               # Hilt AppModule
 └── JarvisState.kt    # State enum
 ```
@@ -101,32 +140,59 @@ app/src/main/java/com/jarvis/android/
 - **Audio**: Media3 ExoPlayer 1.2.1
 - **Network**: OkHttp 4.12.0
 - **QR Scanning**: MLKit 17.3.0 + CameraX 1.4.0
-- **UI**: Jetpack Compose (BOM 2024.01.00) + Material3
+- **UI**: Jetpack Compose (BOM 2024.11.00) + Material3
 - **DI**: Hilt 2.56
-- **Persistence**: DataStore Preferences
+- **Database**: Room 2.6.1 (offline message cache)
+- **Persistence**: DataStore Preferences (auth tokens)
 
 ## API
 
-**Backend**: `https://on-za-menya.online`
+**Backend**: `https://on-za-menya.online` (jarvis-gateway)
+**Auth**: Bearer token (from QR scan)
 
-**Endpoint**: `POST /api/voice`
+### Endpoints
+
 ```
-Authorization: Bearer <token>
-Content-Type: multipart/form-data
-Body: audio (audio/wav)
+POST /api/voice
+├─ Auth: Bearer mob_xxx
+├─ Body: multipart/form-data (audio: WAV)
+└─ Response: { text: string, audio: base64 OGG }
 
-Response: { "text": "...", "audio": "base64 OGG" }
+GET /api/conversations
+├─ Auth: Bearer mob_xxx
+└─ Response: [{ id, userId, title, startedAt, lastMessageAt, isActive }]
+
+GET /api/conversations/{id}/messages
+├─ Auth: Bearer mob_xxx
+├─ Query: ?limit=50
+└─ Response: [{ id, conversationId, role, content, createdAt }]
+
+POST /api/conversations
+├─ Auth: Bearer mob_xxx
+├─ Body: { title?: string }
+└─ Response: { id, userId, title, startedAt }
 ```
 
 **Auth flow**: QR scan → `POST /api/auth/qr/verify` → receive token → store in DataStore
 
+### Telegram Sync
+
+Backend automatically sends Mobile messages to Telegram:
+- User: `📱 *[Mobile App]*\n\n{text}`
+- Assistant: `🤖 *[Jarvis]*\n\n{response}`
+- Command: `/history [N]` - view last N messages in Telegram
+
 ## Critical Notes
 
-1. **Wake word is "JARVIS"** (Porcupine built-in)
+1. **Wake word is "JARVIS"** (Porcupine built-in, sensitivity: 0.5f)
 2. **Porcupine API key required** — set via Settings UI or ADB broadcast
 3. **VAD silence timeout**: 2 seconds. Min recording: 0.5s, max: 10s
 4. **Audio format**: Recording is 16kHz mono PCM → WAV. Response is OGG.
 5. **Lifecycle**: Service binds on ON_START, unbinds+stops on ON_STOP (app-only mode)
+6. **Conversation sync**: PostgreSQL (source of truth) + Room DB (cache) + Flow (reactive UI)
+7. **Pull-on-focus**: App refreshes messages when gaining foreground (ON_START lifecycle)
+8. **Auto-refresh**: After voice command, repository refreshes messages → UI updates automatically
+9. **Cross-channel**: Mobile ↔ Telegram sync via backend goroutines (automatic)
 
 ## Extended Documentation
 

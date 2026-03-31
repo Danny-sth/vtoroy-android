@@ -22,6 +22,7 @@ class WakeWordManager(
     private val isStopping = AtomicBoolean(false)
     private val wakeWordTriggered = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var detectionStartTime = 0L
 
     companion object {
         private const val TAG = "WakeWordManager"
@@ -39,7 +40,7 @@ class WakeWordManager(
             porcupineManager = PorcupineManager.Builder()
                 .setAccessKey(accessKey)
                 .setKeyword(Porcupine.BuiltInKeyword.JARVIS)
-                .setSensitivity(0.85f)
+                .setSensitivity(0.5f)  // Lower = faster response, more false positives; Higher = stricter, slower
                 .build(context, object : PorcupineManagerCallback {
                     override fun invoke(keywordIndex: Int) {
                         // Check all flags before processing
@@ -59,6 +60,7 @@ class WakeWordManager(
 
             porcupineManager?.start()
             isListening.set(true)
+            detectionStartTime = System.currentTimeMillis()
             Log.d(TAG, "Started listening for wake word")
         } catch (e: PorcupineActivationException) {
             Log.e(TAG, "Porcupine activation error", e)

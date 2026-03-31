@@ -66,13 +66,20 @@ class AudioRecorder(
                 val buffer = ShortArray(bufferSize / 2)
                 val recordingStartTime = System.currentTimeMillis()
 
-                Log.d(TAG, "Started recording (max ${MAX_RECORDING_MS}ms)")
+                Log.d(TAG, "🎤 Started recording")
+                Log.d(TAG, "Buffer size: $bufferSize bytes (${bufferSize / 2} samples)")
+                Log.d(TAG, "Max duration: ${MAX_RECORDING_MS}ms")
+                Log.d(TAG, "Min duration: ${MIN_RECORDING_MS}ms")
+
+                var bufferCount = 0
 
                 while (isRecording && isActive) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     val elapsedMs = System.currentTimeMillis() - recordingStartTime
 
                     if (readSize > 0) {
+                        bufferCount++
+
                         val byteBuffer = ByteArray(readSize * 2)
                         for (i in 0 until readSize) {
                             byteBuffer[i * 2] = (buffer[i].toInt() and 0xFF).toByte()
@@ -81,16 +88,23 @@ class AudioRecorder(
                         outputStream.write(byteBuffer)
                         totalBytesWritten += byteBuffer.size
 
+                        // Log every 10 buffers (~320ms at 16kHz)
+                        if (bufferCount % 10 == 0) {
+                            Log.d(TAG, "Recording: ${elapsedMs}ms, ${totalBytesWritten / 1024}KB")
+                        }
+
                         // Check VAD for silence (only after min recording time)
                         if (elapsedMs >= MIN_RECORDING_MS && vad.processAudioBuffer(buffer, readSize)) {
-                            Log.d(TAG, "Silence detected after ${elapsedMs}ms, stopping recording")
+                            Log.d(TAG, "✅ Silence detected after ${elapsedMs}ms")
+                            Log.d(TAG, "Total buffers: $bufferCount")
                             break
                         }
                     }
 
                     // Check max recording time
                     if (elapsedMs >= MAX_RECORDING_MS) {
-                        Log.d(TAG, "Max recording time reached (${MAX_RECORDING_MS}ms), stopping")
+                        Log.d(TAG, "⏱️ Max recording time reached (${MAX_RECORDING_MS}ms)")
+                        Log.d(TAG, "Total buffers: $bufferCount")
                         break
                     }
                 }

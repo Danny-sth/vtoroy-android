@@ -62,7 +62,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.8.2")
 
     // Compose
-    implementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    implementation(platform("androidx.compose:compose-bom:2024.11.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -81,6 +81,14 @@ dependencies {
 
     // DataStore for settings
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Room Database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+
+    // Gson for JSON parsing
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // QR Code scanning
     implementation("com.google.mlkit:barcode-scanning:17.3.0")

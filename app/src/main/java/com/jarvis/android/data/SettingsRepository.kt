@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "jarvis_settings")
@@ -53,6 +54,10 @@ class SettingsRepository(private val context: Context) {
             val apiKey = preferences[PreferencesKeys.PORCUPINE_API_KEY] ?: ""
             token.isNotBlank() && apiKey.isNotBlank()
         }
+
+    suspend fun getAuthToken(): String {
+        return authToken.first()
+    }
 
     suspend fun saveAuthData(token: String, telegramId: Long, expiresAt: String) {
         context.dataStore.edit { preferences ->

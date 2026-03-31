@@ -4,12 +4,17 @@
 
 ## Current Work
 
-_Empty - add notes as you work_
+**2026-03-31**: Unified API and conversation history for Mobile ↔ Telegram sync
 
 ## Decisions Made
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-03-31 | Implemented unified conversation history (Mobile ↔ Telegram) | Single source of truth in PostgreSQL, Room DB for offline cache |
+| 2026-03-31 | Auto-sync Mobile → Telegram via goroutines in jarvis-gateway | Dynamic visibility: voice commands from mobile appear in Telegram chat |
+| 2026-03-31 | Pull-on-focus sync strategy (not push/WebSocket) | Battery efficient, simple, reliable |
+| 2026-03-31 | Room DB + Flow for reactive UI updates | Automatic UI refresh when messages added to database |
+| 2026-03-31 | Wake word sensitivity: 0.85f → 0.5f | Faster detection, more reliable (user feedback) |
 | 2026-03-25 | Renamed vtoroy-android → jarvis-android | Full rebrand, package name changed |
 | 2026-03-25 | Using "JARVIS" wake word | Porcupine built-in, best quality vs custom |
 | 2026-03-25 | App-only mode (no background) | Battery efficiency, user control |
@@ -24,13 +29,15 @@ _Empty - add notes as you work_
 
 ## Architecture Decisions
 
-- **Wake Word**: Porcupine SDK with built-in "JARVIS" keyword (best accuracy)
+- **Wake Word**: Porcupine SDK with built-in "JARVIS" keyword (sensitivity: 0.5f)
 - **VAD**: Silero ONNX (2 second silence detection, 10s max recording)
 - **Audio Playback**: ExoPlayer (Media3) for OGG support
 - **Auth**: QR code scan → Bearer token stored in DataStore
 - **DI**: Hilt (standard Android DI)
 - **UI**: Jetpack Compose + Material3
 - **Network**: OkHttp (simple, reliable)
+- **Conversation Sync**: PostgreSQL (source of truth) + Room (offline cache) + Flow (reactive UI)
+- **Backend Sync**: Pull-on-focus from mobile, auto-push from backend (goroutines)
 
 ## Documentation Structure
 

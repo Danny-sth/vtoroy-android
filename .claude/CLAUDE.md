@@ -1,3 +1,10 @@
+# ⛔⛔⛔ НИКОГДА НИЧЕГО НЕ УПРОЩАТЬ!!! ⛔⛔⛔
+
+**МЫ ДЕЛАЕМ СЛОЖНЫЕ ПРОДУКТЫ! НИКАКИХ ЗАГЛУШЕК И ВРЕМЕННЫХ ПРОСТЫХ РЕШЕНИЙ!**
+**ИСПОЛЬЗУЕМ ТОКЕНЫ МАКСИМАЛЬНО! ПРИОРИТЕТ — КАЧЕСТВО, А НЕ ПРОСТОТА РАЗРАБОТКИ!**
+
+---
+
 # Jarvis Android
 
 > Mobile voice assistant client for Vtoroy AI.
@@ -19,29 +26,54 @@
 ## Architecture
 
 ```
-Wake Word (Porcupine "JARVIS")
+Wake Word (Porcupine "JARVIS", sensitivity: 0.5f)
        ↓
 JarvisListenerService (foreground)
        ↓
-VoiceCommandProcessor
+VoiceCommandProcessor (orchestrates pipeline)
        ↓ record
 VoiceActivityDetector (Silero VAD, 2s silence)
        ↓
 JarvisApiClient (POST /api/voice)
        ↓
+ConversationRepository.refreshMessages() (auto-update UI)
+       ↓
 AudioPlayer (ExoPlayer)
 ```
+
+### Data Flow
+
+```
+Voice Command → API → PostgreSQL → Room DB → Flow → UI (auto-refresh)
+                                    ↓
+                              Telegram (auto-sync via backend goroutines)
+```
+
+### Message Sync (Mobile ↔ Telegram)
+
+- **PostgreSQL**: Single source of truth for all conversations
+- **Room DB**: Local cache for offline access + reactive Flow updates
+- **Pull-on-focus**: Mobile app refreshes messages when gaining foreground
+- **Auto-push**: Backend sends Mobile messages to Telegram automatically
+- **Cross-channel memory**: 20 message history + Cortex vector memory shared
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `service/JarvisListenerService.kt` | Main foreground service, lifecycle |
-| `service/VoiceCommandProcessor.kt` | Recording → API → Playback flow |
-| `wakeword/WakeWordManager.kt` | Porcupine wrapper, wake word detection |
+| `service/VoiceCommandProcessor.kt` | Recording → API → Playback flow + auto-refresh |
+| `wakeword/WakeWordManager.kt` | Porcupine wrapper (sensitivity: 0.5f) |
 | `audio/VoiceActivityDetector.kt` | Silero VAD, silence detection |
-| `network/JarvisApiClient.kt` | HTTP client, /api/voice endpoint |
-| `ui/MainScreen.kt` | Compose UI, state display |
+| `network/JarvisApiClient.kt` | HTTP client, /api/voice + conversation endpoints |
+| `data/ConversationRepository.kt` | Conversation sync, Room DB + API integration |
+| `data/local/JarvisDatabase.kt` | Room DB for offline message cache |
+| `data/model/Message.kt` | Message data model (user/assistant) |
+| `data/model/Conversation.kt` | Conversation metadata model |
+| `ui/MainScreen.kt` | Compose UI with message history (LazyColumn) |
+| `ui/ConversationViewModel.kt` | ViewModel with reactive Flow for auto-updates |
+| `ui/components/MessageBubble.kt` | Message UI component (text bubbles) |
+| `ui/components/MessagesList.kt` | LazyColumn with auto-scroll |
 | `ui/SettingsScreen.kt` | QR scan, API key input |
 
 ## Package Structure
@@ -50,20 +82,57 @@ AudioPlayer (ExoPlayer)
 com.jarvis.android/
 ├── JarvisApplication.kt      # Hilt app entry
 ├── audio/                    # VAD, AudioPlayer, AudioRecorder
+├── data/                     # Repository, Room DB, models
+│   ├── ConversationRepository.kt
+│   ├── SettingsRepository.kt
+│   ├── local/                # Room DB entities, DAOs, database
+│   └── model/                # Message, Conversation data classes
 ├── di/                       # Hilt modules
 ├── model/                    # JarvisState enum
-├── network/                  # JarvisApiClient
+├── network/                  # JarvisApiClient + API models
 ├── service/                  # Foreground services
-├── ui/                       # Compose screens
+├── ui/                       # Compose screens + ViewModels
+│   ├── MainScreen.kt
+│   ├── ConversationViewModel.kt
+│   └── components/           # MessageBubble, MessagesList
 ├── util/                     # Constants, permissions
 └── wakeword/                 # Porcupine manager
 ```
 
 ## Backend Integration
 
-**Gateway**: `vtoroy-gateway` on VPS
-**Endpoint**: `POST /api/voice`
+**Gateway**: `jarvis-gateway` on VPS (`https://on-za-menya.online`)
 **Auth**: Bearer token (from QR code)
+
+### API Endpoints
+
+```
+POST /api/voice
+├─ Auth: Bearer mob_xxx
+├─ Body: multipart/form-data (audio: WAV file)
+└─ Response: { text: string, audio: base64 OGG }
+
+GET /api/conversations
+├─ Auth: Bearer mob_xxx
+└─ Response: [{ id, userId, title, startedAt, lastMessageAt, isActive }]
+
+GET /api/conversations/{id}/messages
+├─ Auth: Bearer mob_xxx
+├─ Query: ?limit=50
+└─ Response: [{ id, conversationId, role, content, createdAt }]
+
+POST /api/conversations
+├─ Auth: Bearer mob_xxx
+├─ Body: { title?: string }
+└─ Response: { id, userId, title, startedAt }
+```
+
+### Telegram Integration
+
+Backend automatically sends Mobile messages to Telegram:
+- User message: `📱 *[Mobile App]*\n\n{text}`
+- Assistant response: `🤖 *[Jarvis]*\n\n{response}`
+- Commands: `/history [N]` - view last N messages
 
 ## Detailed Docs
 

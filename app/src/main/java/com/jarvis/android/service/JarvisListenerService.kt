@@ -72,11 +72,15 @@ class JarvisListenerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "Service created")
+        Log.d(TAG, "═══════════════════════════════════════")
+        Log.d(TAG, "🚀 SERVICE CREATED")
+        Log.d(TAG, "Initializing audio player...")
         voiceCommandProcessor.initializePlayer()
+        Log.d(TAG, "Acquiring wake lock...")
         acquireWakeLock()
-        // Initialize wake word on bind (not just on startCommand)
+        Log.d(TAG, "Initializing wake word detection...")
         initializeWakeWord()
+        Log.d(TAG, "═══════════════════════════════════════")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -138,53 +142,91 @@ class JarvisListenerService : Service() {
 
     private suspend fun startWakeWordManager() {
         try {
+            Log.d(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            Log.d(TAG, "🎧 WAKE WORD MANAGER INITIALIZATION")
+
             val apiKey = settingsRepository.porcupineApiKey.first()
+            Log.d(TAG, "Porcupine API key: ${if (apiKey.isBlank()) "NOT SET" else "SET (${apiKey.take(10)}...)"}")
+
             if (apiKey.isBlank()) {
+                Log.e(TAG, "❌ Porcupine API key not configured")
                 _state.value = JarvisState.ERROR
                 _errorMessage.value = "Porcupine API key not configured"
+                Log.d(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 return
             }
 
-            // Check if background recording is allowed
-            if (!isBackgroundRecordingAllowed()) {
-                Log.w(TAG, "Background recording not allowed by system")
-                _state.value = JarvisState.ERROR
-                _errorMessage.value = "Background mic blocked. Enable in MIUI Settings → Apps → Jarvis → Permissions → Microphone → Allow always"
-                return
+            // Note: Background recording check removed for app-only mode
+            // App only works when open, so foreground mic permission is sufficient
+            Log.d(TAG, "App-only mode: skipping background recording check")
+            Log.d(TAG, "Wake word will work when app is open")
+
+            if (wakeWordManager != null) {
+                Log.d(TAG, "Stopping existing wake word manager...")
+                wakeWordManager?.stop()
             }
 
-            wakeWordManager?.stop()
+            Log.d(TAG, "Creating new WakeWordManager instance...")
             wakeWordManager = WakeWordManager(
                 context = this@JarvisListenerService,
                 accessKey = apiKey,
                 onWakeWordDetected = { onWakeWordDetected() },
                 onError = { error ->
+                    Log.e(TAG, "❌ Wake word error: $error")
                     _state.value = JarvisState.ERROR
                     _errorMessage.value = error
                 }
             )
+
+            Log.d(TAG, "Starting wake word detection...")
             wakeWordManager?.start()
+
             _state.value = JarvisState.IDLE
             notificationManager.updateNotification(_state.value)
-            Log.d(TAG, "Wake word manager started")
+
+            Log.d(TAG, "✅ WAKE WORD MANAGER READY")
+            Log.d(TAG, "Listening for 'JARVIS'...")
+            Log.d(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing wake word", e)
+            Log.e(TAG, "❌ WAKE WORD INITIALIZATION FAILED")
+            Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}")
+            e.printStackTrace()
             _state.value = JarvisState.ERROR
             _errorMessage.value = "Error: ${e.message}"
+            Log.d(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         }
     }
 
     private fun onWakeWordDetected() {
-        Log.d(TAG, "Wake word detected!")
+        Log.d(TAG, "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓")
+        Log.d(TAG, "┃  🔊 WAKE WORD DETECTED: JARVIS   ┃")
+        Log.d(TAG, "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛")
         serviceScope.launch { processVoiceCommand() }
     }
 
     private suspend fun processVoiceCommand() {
         try {
+            Log.d(TAG, "Stopping wake word manager...")
             wakeWordManager?.stop()
             wakeWordManager = null
-            voiceCommandProcessor.processVoiceCommand(stateCallback)
+            Log.d(TAG, "Wake word manager stopped")
+
+            Log.d(TAG, "Processing voice command...")
+            val result = voiceCommandProcessor.processVoiceCommand(stateCallback)
+
+            when (result) {
+                is VoiceCommandProcessor.ProcessingResult.Success -> {
+                    Log.d(TAG, "✅ Voice command processed successfully")
+                }
+                is VoiceCommandProcessor.ProcessingResult.Error -> {
+                    Log.e(TAG, "❌ Voice command failed: ${result.message}")
+                }
+                is VoiceCommandProcessor.ProcessingResult.RecordingFailed -> {
+                    Log.e(TAG, "❌ Recording failed")
+                }
+            }
         } finally {
+            Log.d(TAG, "Restarting wake word detection...")
             isWakeWordInitialized = false
             initializeWakeWord()
         }
@@ -205,12 +247,20 @@ class JarvisListenerService : Service() {
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "Service destroyed")
+        Log.d(TAG, "═══════════════════════════════════════")
+        Log.d(TAG, "🛑 SERVICE DESTROYING")
+        Log.d(TAG, "Stopping wake word manager...")
         wakeWordManager?.stop()
+        Log.d(TAG, "Stopping recording...")
         voiceCommandProcessor.stopRecording()
+        Log.d(TAG, "Releasing audio player...")
         voiceCommandProcessor.releasePlayer()
+        Log.d(TAG, "Releasing wake lock...")
         releaseWakeLock()
+        Log.d(TAG, "Cancelling service scope...")
         serviceScope.cancel()
+        Log.d(TAG, "✅ SERVICE DESTROYED")
+        Log.d(TAG, "═══════════════════════════════════════")
         super.onDestroy()
     }
 }

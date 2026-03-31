@@ -1,13 +1,18 @@
 package com.jarvis.android.di
 
 import android.content.Context
+import androidx.room.Room
 import com.jarvis.android.audio.AudioPlayer
 import com.jarvis.android.audio.AudioPlayerInterface
 import com.jarvis.android.audio.AudioRecorder
 import com.jarvis.android.audio.AudioRecorderInterface
 import com.jarvis.android.audio.VoiceActivityDetector
 import com.jarvis.android.audio.VoiceActivityDetectorInterface
+import com.jarvis.android.data.ConversationRepository
 import com.jarvis.android.data.SettingsRepository
+import com.jarvis.android.data.local.JarvisDatabase
+import com.jarvis.android.data.local.dao.ConversationDao
+import com.jarvis.android.data.local.dao.MessageDao
 import com.jarvis.android.network.JarvisApiClient
 import com.jarvis.android.network.VoiceApiClientInterface
 import dagger.Module
@@ -55,5 +60,45 @@ object AppModule {
         @ApplicationContext context: Context
     ): VoiceActivityDetectorInterface {
         return VoiceActivityDetector(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideJarvisDatabase(
+        @ApplicationContext context: Context
+    ): JarvisDatabase {
+        return Room.databaseBuilder(
+            context,
+            JarvisDatabase::class.java,
+            "jarvis_database"
+        ).build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideConversationDao(database: JarvisDatabase): ConversationDao {
+        return database.conversationDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideMessageDao(database: JarvisDatabase): MessageDao {
+        return database.messageDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideJarvisApiClient(): JarvisApiClient {
+        return JarvisApiClient()
+    }
+
+    @Provides
+    @Singleton
+    fun provideConversationRepository(
+        apiClient: JarvisApiClient,
+        conversationDao: ConversationDao,
+        messageDao: MessageDao
+    ): ConversationRepository {
+        return ConversationRepository(apiClient, conversationDao, messageDao)
     }
 }

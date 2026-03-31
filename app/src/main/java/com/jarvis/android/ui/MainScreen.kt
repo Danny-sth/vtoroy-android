@@ -25,22 +25,29 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.jarvis.android.JarvisState
 import com.jarvis.android.service.JarvisListenerService
 import com.jarvis.android.ui.components.ArcReactor
+import com.jarvis.android.ui.components.MessagesList
 
 private val BackgroundBlack = Color(0xFF0D0D0D)
 private val SurfaceGray = Color(0xFF1A1A1A)
 private val IronManRed = Color(0xFFE62429)
 
 @Composable
-fun MainScreen(onNavigateToSettings: () -> Unit) {
+fun MainScreen(
+    onNavigateToSettings: () -> Unit,
+    viewModel: ConversationViewModel = hiltViewModel()
+) {
     val context = LocalContext.current
     var service by remember { mutableStateOf<JarvisListenerService?>(null) }
 
     val state by service?.state?.collectAsState() ?: remember { mutableStateOf(JarvisState.IDLE) }
+    val messages by viewModel.messages.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     val serviceConnection = remember {
         object : ServiceConnection {
@@ -90,6 +97,8 @@ fun MainScreen(onNavigateToSettings: () -> Unit) {
                             Context.BIND_AUTO_CREATE
                         )
                         isBound = true
+                        // Refresh messages when app gains focus
+                        viewModel.refreshMessages()
                     }
                 }
                 Lifecycle.Event.ON_STOP -> {
@@ -137,25 +146,44 @@ fun MainScreen(onNavigateToSettings: () -> Unit) {
             )
         }
 
-        // Center - Arc Reactor + Status
+        // Main content - Arc Reactor + Messages
         Column(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 80.dp) // Space for settings button
         ) {
-            ArcReactor(
-                state = state,
-                modifier = Modifier.size(240.dp)
-            )
+            // Arc Reactor + Status - top section
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                ArcReactor(
+                    state = state,
+                    modifier = Modifier.size(180.dp) // Reduced from 240dp
+                )
 
-            Spacer(modifier = Modifier.height(40.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = getStatusText(state),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Light,
-                color = Color.White.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center,
-                letterSpacing = 3.sp
+                Text(
+                    text = getStatusText(state),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Light,
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                    letterSpacing = 2.sp
+                )
+            }
+
+            // Messages list - bottom section
+            MessagesList(
+                messages = messages,
+                isLoading = isLoading,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp)
+                    .padding(bottom = 16.dp)
             )
         }
     }
