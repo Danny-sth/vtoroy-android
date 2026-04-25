@@ -78,10 +78,11 @@ class ConversationViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Get conversations
-                val conversationsResult = conversationRepository.getConversations(authToken, forceRefresh = false)
+                // Get conversations - force refresh to sync with Telegram history
+                val conversationsResult = conversationRepository.getConversations(authToken, forceRefresh = true)
                 if (conversationsResult.isSuccess) {
                     _conversations.value = conversationsResult.getOrNull() ?: emptyList()
+                    Log.d(TAG, "Synced ${_conversations.value.size} conversations from server")
                 }
 
                 // Get current active conversation ID

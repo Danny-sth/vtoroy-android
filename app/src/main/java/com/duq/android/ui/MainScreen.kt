@@ -13,7 +13,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.delay
@@ -41,6 +47,7 @@ import com.duq.android.ui.components.ArcReactor
 import com.duq.android.ui.components.MessagesList
 import com.duq.android.ui.theme.DuqColors
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
@@ -54,6 +61,12 @@ fun MainScreen(
     val viewModelError by viewModel.error.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val conversations by viewModel.conversations.collectAsState()
+    val currentConversation by viewModel.currentConversation.collectAsState()
+
+    // Bottom sheet state for conversation picker
+    var showConversationPicker by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
 
     // Combine errors - service error takes priority
     val currentError = serviceError ?: viewModelError
@@ -164,35 +177,140 @@ fun MainScreen(
         }
     }
 
+    // Conversation picker bottom sheet
+    if (showConversationPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showConversationPicker = false },
+            sheetState = sheetState,
+            containerColor = DuqColors.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    text = "Conversations",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DuqColors.textPrimary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                if (conversations.isEmpty()) {
+                    Text(
+                        text = "No conversations yet",
+                        fontSize = 14.sp,
+                        color = DuqColors.textSecondary,
+                        modifier = Modifier.padding(vertical = 24.dp)
+                    )
+                } else {
+                    LazyColumn {
+                        items(conversations) { conversation ->
+                            val isSelected = conversation.id == currentConversation?.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (isSelected) DuqColors.primary.copy(alpha = 0.1f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable {
+                                        viewModel.loadMessagesForConversation(conversation.id)
+                                        showConversationPicker = false
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = conversation.title ?: conversation.id,
+                                        fontSize = 16.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = DuqColors.textPrimary
+                                    )
+                                    if (conversation.isActive) {
+                                        Text(
+                                            text = "Active",
+                                            fontSize = 12.sp,
+                                            color = DuqColors.primary
+                                        )
+                                    }
+                                }
+                                if (isSelected) {
+                                    Text(
+                                        text = "✓",
+                                        fontSize = 18.sp,
+                                        color = DuqColors.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(DuqColors.background)
     ) {
-        // Settings button - top right
-        Box(
+        // Header row with conversation title and settings
+        Row(
             modifier = Modifier
                 .statusBarsPadding()
-                .padding(16.dp)
-                .align(Alignment.TopEnd)
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(DuqColors.surfaceVariant)
-                .clickable { onNavigateToSettings() },
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "\u2699",
-                fontSize = 22.sp,
-                color = DuqColors.textSecondary
-            )
+            // Conversation title (clickable to open picker)
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { showConversationPicker = true }
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = currentConversation?.title ?: "Today",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = DuqColors.textPrimary
+                )
+                Text(
+                    text = " ▼",
+                    fontSize = 12.sp,
+                    color = DuqColors.textSecondary
+                )
+            }
+
+            // Settings button
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(DuqColors.surfaceVariant)
+                    .clickable { onNavigateToSettings() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u2699",
+                    fontSize = 22.sp,
+                    color = DuqColors.textSecondary
+                )
+            }
         }
 
         // Main content - Arc Reactor + Messages
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 80.dp) // Space for settings button
+                .padding(top = 80.dp) // Space for header
         ) {
             // Arc Reactor + Status - top section
             Column(
