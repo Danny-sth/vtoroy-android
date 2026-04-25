@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class DuqListenerService : Service() {
+class DuqListenerService : Service(), VoiceServiceController {
 
     companion object {
         private const val TAG = "DuqListenerService"
@@ -54,10 +54,10 @@ class DuqListenerService : Service() {
     private var isWakeWordInitialized = false
 
     private val _state = MutableStateFlow(DuqState.IDLE)
-    val state: StateFlow<DuqState> = _state
+    override val state: StateFlow<DuqState> = _state
 
     private val _error = MutableStateFlow<DuqError?>(null)
-    val error: StateFlow<DuqError?> = _error
+    override val error: StateFlow<DuqError?> = _error
 
     private val stateCallback = object : VoiceCommandProcessor.StateCallback {
         override fun onStateChanged(state: DuqState) {
@@ -72,6 +72,7 @@ class DuqListenerService : Service() {
 
     inner class LocalBinder : Binder() {
         fun getService(): DuqListenerService = this@DuqListenerService
+        fun getController(): VoiceServiceController = this@DuqListenerService
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -294,6 +295,25 @@ class DuqListenerService : Service() {
     private fun releaseWakeLock() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+    }
+
+    // VoiceServiceController implementation
+    override fun startListening() {
+        if (!isWakeWordInitialized) {
+            initializeWakeWord()
+        }
+    }
+
+    override fun stopListening() {
+        wakeWordManager?.stop()
+        wakeWordManager = null
+        isWakeWordInitialized = false
+        _state.value = DuqState.IDLE
+    }
+
+    override fun clearError() {
+        _error.value = null
+        _state.value = DuqState.IDLE
     }
 
     override fun onDestroy() {

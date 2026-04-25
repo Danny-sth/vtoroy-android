@@ -26,7 +26,7 @@ import kotlinx.coroutines.delay
 
 class DuqApiClient(
     private val tokenRefreshInterceptor: TokenRefreshInterceptor? = null
-) : VoiceApiClientInterface {
+) : VoiceApiClientInterface, ConversationApiClient {
 
     companion object {
         private const val TAG = "DuqApiClient"
@@ -446,7 +446,7 @@ class DuqApiClient(
     /**
      * Get list of user's conversations with retry on transient failures
      */
-    suspend fun getConversations(authToken: String): Result<List<ConversationResponse>> =
+    override suspend fun getConversations(authToken: String): Result<List<ConversationResponse>> =
         withContext(Dispatchers.IO) {
             try {
                 withRetry {
@@ -481,10 +481,10 @@ class DuqApiClient(
     /**
      * Get messages for a conversation with retry on transient failures
      */
-    suspend fun getMessages(
+    override suspend fun getMessages(
         authToken: String,
         conversationId: String,
-        limit: Int = AppConfig.DEFAULT_MESSAGES_LIMIT
+        limit: Int
     ): Result<List<MessageResponse>> = withContext(Dispatchers.IO) {
         try {
             withRetry {
@@ -519,9 +519,9 @@ class DuqApiClient(
     /**
      * Create a new conversation with retry on transient failures
      */
-    suspend fun createConversation(
+    override suspend fun createConversation(
         authToken: String,
-        title: String? = null
+        title: String?
     ): Result<ConversationResponse> = withContext(Dispatchers.IO) {
         try {
             withRetry {
@@ -558,7 +558,7 @@ class DuqApiClient(
     /**
      * Download audio for a message with retry on transient failures
      */
-    suspend fun downloadAudio(
+    override suspend fun downloadAudio(
         authToken: String,
         messageId: Long
     ): Result<ByteArray> = withContext(Dispatchers.IO) {

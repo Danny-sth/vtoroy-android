@@ -31,6 +31,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.duq.android.DuqState
 import com.duq.android.error.DuqError
 import com.duq.android.service.DuqListenerService
+import com.duq.android.service.VoiceServiceController
 import com.duq.android.ui.components.ArcReactor
 import com.duq.android.ui.components.MessagesList
 import com.duq.android.ui.theme.DuqColors
@@ -41,10 +42,10 @@ fun MainScreen(
     viewModel: ConversationViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    var service by remember { mutableStateOf<DuqListenerService?>(null) }
+    var voiceController by remember { mutableStateOf<VoiceServiceController?>(null) }
 
-    val state by service?.state?.collectAsState() ?: remember { mutableStateOf(DuqState.IDLE) }
-    val serviceError by service?.error?.collectAsState() ?: remember { mutableStateOf<DuqError?>(null) }
+    val state by voiceController?.state?.collectAsState() ?: remember { mutableStateOf(DuqState.IDLE) }
+    val serviceError by voiceController?.error?.collectAsState() ?: remember { mutableStateOf<DuqError?>(null) }
     val viewModelError by viewModel.error.collectAsState()
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -55,10 +56,10 @@ fun MainScreen(
     val serviceConnection = remember {
         object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-                service = (binder as? DuqListenerService.LocalBinder)?.getService()
+                voiceController = (binder as? DuqListenerService.LocalBinder)?.getController()
             }
             override fun onServiceDisconnected(name: ComponentName?) {
-                service = null
+                voiceController = null
             }
         }
     }
@@ -128,7 +129,7 @@ fun MainScreen(
                     if (isBound) {
                         try { context.unbindService(serviceConnection) } catch (_: Exception) {}
                         isBound = false
-                        service = null
+                        voiceController = null
                     }
                 }
                 else -> {}

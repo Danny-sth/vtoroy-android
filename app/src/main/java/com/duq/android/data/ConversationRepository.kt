@@ -8,8 +8,8 @@ import com.duq.android.data.local.entities.MessageEntity
 import com.duq.android.data.model.Conversation
 import com.duq.android.data.model.Message
 import com.duq.android.data.model.MessageRole
+import com.duq.android.network.ConversationApiClient
 import com.duq.android.network.ConversationResponse
-import com.duq.android.network.DuqApiClient
 import com.duq.android.network.MessageResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -19,12 +19,13 @@ import javax.inject.Singleton
 
 @Singleton
 class ConversationRepository @Inject constructor(
-    private val apiClient: DuqApiClient,
+    private val apiClient: ConversationApiClient,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao
 ) {
     companion object {
         private const val TAG = "ConversationRepository"
+        private const val DEFAULT_MESSAGES_LIMIT = 50
     }
 
     /**
@@ -54,7 +55,7 @@ class ConversationRepository @Inject constructor(
             }
 
             // Create new conversation if none exist
-            val newConv = apiClient.createConversation(authToken).getOrNull()
+            val newConv = apiClient.createConversation(authToken, null).getOrNull()
             if (newConv != null) {
                 conversationDao.insertConversation(newConv.toEntity())
                 Log.d(TAG, "Created new conversation: ${newConv.id}")
@@ -116,7 +117,7 @@ class ConversationRepository @Inject constructor(
         return try {
             if (forceRefresh) {
                 // Fetch from API and update cache
-                val apiResult = apiClient.getMessages(authToken, conversationId)
+                val apiResult = apiClient.getMessages(authToken, conversationId, DEFAULT_MESSAGES_LIMIT)
                 if (apiResult.isSuccess) {
                     val messages = apiResult.getOrNull() ?: emptyList()
                     messageDao.insertMessages(messages.map { it.toEntity() })
@@ -147,7 +148,7 @@ class ConversationRepository @Inject constructor(
      */
     suspend fun refreshMessages(authToken: String, conversationId: String) {
         try {
-            val apiResult = apiClient.getMessages(authToken, conversationId)
+            val apiResult = apiClient.getMessages(authToken, conversationId, DEFAULT_MESSAGES_LIMIT)
             if (apiResult.isSuccess) {
                 val messages = apiResult.getOrNull() ?: emptyList()
                 messageDao.insertMessages(messages.map { it.toEntity() })

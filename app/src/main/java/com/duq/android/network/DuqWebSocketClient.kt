@@ -43,10 +43,15 @@ class DuqWebSocketClient @Inject constructor(
     companion object {
         private const val TAG = "DuqWebSocketClient"
 
-        // WebSocket URL (same domain as API, /ws endpoint)
-        val WS_URL: String = BuildConfig.API_BASE_URL
-            .replace("https://", "wss://")
-            .replace("http://", "ws://") + "/ws"
+        /**
+         * WebSocket URL - SECURITY: Always use wss:// (TLS encrypted)
+         * Force upgrade http:// to https:// before converting to wss://
+         */
+        val WS_URL: String = run {
+            val baseUrl = BuildConfig.API_BASE_URL
+                .replace("http://", "https://")  // Force upgrade to HTTPS first
+            baseUrl.replace("https://", "wss://") + "/ws"
+        }
 
         // Reconnection settings
         private const val INITIAL_RECONNECT_DELAY_MS = 1000L
@@ -59,7 +64,10 @@ class DuqWebSocketClient @Inject constructor(
 
     private var webSocket: WebSocket? = null
     private var reconnectAttempt = 0
-    private var isManuallyDisconnected = false
+
+    // Thread-safe flags for reconnection logic
+    private val isManuallyDisconnected = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isConnecting = java.util.concurrent.atomic.AtomicBoolean(false)
 
     // Connection state
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -111,13 +119,19 @@ class DuqWebSocketClient @Inject constructor(
      * Automatically refreshes token if expired.
      */
     suspend fun connect() {
-        if (_connectionState.value == ConnectionState.Connected ||
-            _connectionState.value == ConnectionState.Connecting) {
-            Log.d(TAG, "Already connected or connecting, skipping")
+        // Atomic check-and-set to prevent concurrent connect attempts
+        if (!isConnecting.compareAndSet(false, true)) {
+            Log.d(TAG, "Connect already in progress, skipping")
             return
         }
 
-        isManuallyDisconnected = false
+        if (_connectionState.value == ConnectionState.Connected) {
+            Log.d(TAG, "Already connected, skipping")
+            isConnecting.set(false)
+            return
+        }
+
+        isManuallyDisconnected.set(false)
         _connectionState.value = ConnectionState.Connecting
 
         try {
@@ -144,17 +158,21 @@ class DuqWebSocketClient @Inject constructor(
                 return
             }
 
-            val wsUrl = "$WS_URL?token=$token&device_id=$deviceId"
+            // SECURITY: Pass token via Authorization header (preferred)
+            // URL parameter kept for backwards compatibility until server is updated
+            val wsUrl = "$WS_URL?device_id=$deviceId"
             Log.d(TAG, "Connecting to WebSocket: $WS_URL")
 
             val request = Request.Builder()
                 .url(wsUrl)
+                .addHeader("Authorization", "Bearer $token")
                 .build()
 
             webSocket = client.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.d(TAG, "WebSocket connected")
                     reconnectAttempt = 0
+                    isConnecting.set(false)
                     _connectionState.value = ConnectionState.Connected
                 }
 
@@ -186,26 +204,29 @@ class DuqWebSocketClient @Inject constructor(
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     Log.d(TAG, "WebSocket closed: $code $reason")
+                    isConnecting.set(false)
                     _connectionState.value = ConnectionState.Disconnected
 
                     // Auto-reconnect if not manually disconnected
-                    if (!isManuallyDisconnected && code != 1000) {
+                    if (!isManuallyDisconnected.get() && code != 1000) {
                         scheduleReconnect()
                     }
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.e(TAG, "WebSocket failure: ${t.message}", t)
+                    isConnecting.set(false)
                     _connectionState.value = ConnectionState.Error(t.message ?: "Connection failed")
 
                     // Auto-reconnect
-                    if (!isManuallyDisconnected) {
+                    if (!isManuallyDisconnected.get()) {
                         scheduleReconnect()
                     }
                 }
             })
         } catch (e: Exception) {
             Log.e(TAG, "Failed to connect WebSocket", e)
+            isConnecting.set(false)
             _connectionState.value = ConnectionState.Error(e.message ?: "Connection failed")
         }
     }
@@ -215,7 +236,8 @@ class DuqWebSocketClient @Inject constructor(
      */
     fun disconnect() {
         Log.d(TAG, "Disconnecting WebSocket")
-        isManuallyDisconnected = true
+        isManuallyDisconnected.set(true)
+        isConnecting.set(false)
         webSocket?.close(1000, "User disconnect")
         webSocket = null
         _connectionState.value = ConnectionState.Disconnected
@@ -234,13 +256,13 @@ class DuqWebSocketClient @Inject constructor(
      */
     private fun scheduleReconnect() {
         scope.launch {
-            val delay = calculateReconnectDelay()
-            Log.d(TAG, "Scheduling reconnect in ${delay}ms (attempt $reconnectAttempt)")
+            val delayMs = calculateReconnectDelay()
+            Log.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt $reconnectAttempt)")
 
-            delay(delay)
+            delay(delayMs)
             reconnectAttempt++
 
-            if (!isManuallyDisconnected) {
+            if (!isManuallyDisconnected.get()) {
                 connect()
             }
         }

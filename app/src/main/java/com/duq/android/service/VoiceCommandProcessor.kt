@@ -211,8 +211,7 @@ class VoiceCommandProcessor @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ EXCEPTION IN VOICE COMMAND PROCESSING")
-            Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}", e)
             Log.e(TAG, "═══════════════════════════════════════")
             val error = when (e) {
                 is java.net.SocketTimeoutException -> DuqError.NetworkError.timeout()

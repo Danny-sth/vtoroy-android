@@ -133,31 +133,31 @@ class WakeWordManager(
             return
         }
 
-        try {
-            val manager = porcupineManager
-            porcupineManager = null
+        val manager = porcupineManager
+        porcupineManager = null
 
-            if (manager != null) {
-                try {
-                    manager.stop()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error stopping Porcupine", e)
-                }
+        if (manager != null) {
+            try {
+                manager.stop()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping Porcupine", e)
+            }
 
-                // Wait for audio thread to fully stop before deleting
-                Thread.sleep(500)
-
+            // Post delete with delay to allow audio thread to fully stop
+            // Uses Handler instead of Thread.sleep to avoid blocking
+            mainHandler.postDelayed({
                 try {
                     manager.delete()
                     Log.d(TAG, "Porcupine resources released")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error deleting Porcupine", e)
                 }
-            }
-            Log.d(TAG, "Stopped listening")
-        } finally {
+                isStopping.set(false)
+            }, 500)
+        } else {
             isStopping.set(false)
         }
+        Log.d(TAG, "Stopped listening")
     }
 
     fun isActive(): Boolean = isListening.get() && !isStopping.get()
