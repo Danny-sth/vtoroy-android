@@ -15,11 +15,15 @@ import com.duq.android.data.local.DuqDatabase
 import com.duq.android.data.local.Migrations
 import com.duq.android.data.local.dao.ConversationDao
 import com.duq.android.data.local.dao.MessageDao
+import com.duq.android.logging.AndroidLogger
+import com.duq.android.logging.Logger
 import com.duq.android.network.ConversationApiClient
 import com.duq.android.network.DuqApiClient
 import com.duq.android.network.DuqWebSocketClient
 import com.duq.android.network.TokenRefreshInterceptor
 import com.duq.android.network.VoiceApiClientInterface
+import com.duq.android.wakeword.DefaultWakeWordManagerFactory
+import com.duq.android.wakeword.WakeWordManagerFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -144,5 +148,17 @@ object AppModule {
         settingsRepository: SettingsRepository
     ): DuqWebSocketClient {
         return DuqWebSocketClient(settingsRepository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideWakeWordManagerFactory(): WakeWordManagerFactory {
+        return DefaultWakeWordManagerFactory()
+    }
+
+    @Provides
+    @Singleton
+    fun provideLogger(): Logger {
+        return AndroidLogger()
     }
 }

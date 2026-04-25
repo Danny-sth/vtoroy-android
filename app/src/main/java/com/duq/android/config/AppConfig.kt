@@ -27,11 +27,22 @@ object AppConfig {
     const val SILERO_SPEECH_DURATION_MS = 100
     const val SILERO_FRAME_SIZE = 512
 
+    // Audio formats
+    const val AUDIO_SAMPLE_RATE = 16000
+    const val AUDIO_TEMP_FILENAME = "voice_command.wav"
+    const val RESPONSE_AUDIO_FILENAME = "response_audio.ogg"
+
     // Wake word (0.0-1.0, higher = more sensitive, may cause false positives)
     const val WAKE_WORD_SENSITIVITY = 0.9f
+    const val WAKE_WORD_FILENAME = "hey_duck.ppn"
 
     // Service
     const val WAKE_LOCK_TIMEOUT_MS = 600000L  // 10 minutes
+    const val SERVICE_BIND_TIMEOUT_MS = 5000L  // 5 seconds
+
+    // WebSocket
+    const val WS_RESPONSE_TIMEOUT_MS = 60_000L  // 60 seconds
+    const val WS_CONNECT_TIMEOUT_MS = 5_000L   // 5 seconds
 
     // Auth
     const val AUTH_TIMEOUT_S = 10L

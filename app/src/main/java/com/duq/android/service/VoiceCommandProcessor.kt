@@ -7,10 +7,11 @@ import android.util.Base64
 import android.util.Log
 import com.duq.android.DuqState
 import com.duq.android.audio.AudioPlayerInterface
-import com.duq.android.error.DuqError
 import com.duq.android.audio.AudioRecorderInterface
+import com.duq.android.config.AppConfig
 import com.duq.android.data.ConversationRepository
 import com.duq.android.data.SettingsRepository
+import com.duq.android.error.DuqError
 import com.duq.android.network.DuqApiClient
 import com.duq.android.network.DuqWebSocketClient
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -32,7 +33,6 @@ class VoiceCommandProcessor @Inject constructor(
 ) {
     companion object {
         private const val TAG = "VoiceCommandProcessor"
-        private const val WS_RESPONSE_TIMEOUT_MS = 60_000L  // 60s timeout for WebSocket response
     }
 
     sealed class ProcessingResult {
@@ -58,7 +58,7 @@ class VoiceCommandProcessor @Inject constructor(
     }
 
     suspend fun processVoiceCommand(callback: StateCallback): ProcessingResult {
-        val audioFile = File(context.cacheDir, "voice_command.wav")
+        val audioFile = File(context.cacheDir, AppConfig.AUDIO_TEMP_FILENAME)
 
         return run processCommand@ {
             try {
@@ -103,8 +103,8 @@ class VoiceCommandProcessor @Inject constructor(
             if (!webSocketClient.isConnected()) {
                 Log.d(TAG, "WebSocket not connected, connecting...")
                 webSocketClient.connect()
-                // Wait for connection (max 5s)
-                withTimeoutOrNull(5000) {
+                // Wait for connection
+                withTimeoutOrNull(AppConfig.WS_CONNECT_TIMEOUT_MS) {
                     webSocketClient.connectionState
                         .filter { it == DuqWebSocketClient.ConnectionState.Connected }
                         .first()
@@ -124,7 +124,7 @@ class VoiceCommandProcessor @Inject constructor(
                     Log.d(TAG, "Waiting for WebSocket response...")
 
                     // Wait for response via WebSocket
-                    val response = withTimeoutOrNull(WS_RESPONSE_TIMEOUT_MS) {
+                    val response = withTimeoutOrNull(AppConfig.WS_RESPONSE_TIMEOUT_MS) {
                         webSocketClient.messages
                             .filter { it.taskId == sendResult.taskId }
                             .first()

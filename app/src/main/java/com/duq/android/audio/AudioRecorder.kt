@@ -22,7 +22,6 @@ class AudioRecorder(
 
     companion object {
         private const val TAG = "AudioRecorder"
-        private const val SAMPLE_RATE = 16000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
     }
@@ -30,7 +29,7 @@ class AudioRecorder(
     private var audioRecord: AudioRecord? = null
     private var isRecording = false
 
-    private val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+    private val bufferSize = AudioRecord.getMinBufferSize(AppConfig.AUDIO_SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
 
     override suspend fun recordUntilSilence(outputFile: File): Boolean = withContext(Dispatchers.IO) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
@@ -43,7 +42,7 @@ class AudioRecorder(
         try {
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.MIC,
-                SAMPLE_RATE,
+                AppConfig.AUDIO_SAMPLE_RATE,
                 CHANNEL_CONFIG,
                 AUDIO_FORMAT,
                 bufferSize
@@ -114,7 +113,7 @@ class AudioRecorder(
             Log.d(TAG, "Recording stopped, total bytes: $totalBytesWritten")
 
             if (totalBytesWritten > 0) {
-                convertPcmToWav(rawFile, outputFile, SAMPLE_RATE, 1, 16)
+                convertPcmToWav(rawFile, outputFile, AppConfig.AUDIO_SAMPLE_RATE, 1, 16)
                 rawFile.delete()
                 return@withContext true
             }

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -23,12 +25,15 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import com.duq.android.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.duq.android.DuqState
+import com.duq.android.config.AppConfig
 import com.duq.android.error.DuqError
 import com.duq.android.service.DuqListenerService
 import com.duq.android.service.VoiceServiceController
@@ -85,9 +90,13 @@ fun MainScreen(
         permissionLauncher.launch(permissions.toTypedArray())
     }
 
+    // Track service binding start time for timeout
+    var bindingStartTime by remember { mutableStateOf(0L) }
+
     // Start foreground service and bind when permissions are granted
     LaunchedEffect(permissionsGranted) {
         if (permissionsGranted && !isBound) {
+            bindingStartTime = System.currentTimeMillis()
             // Start as foreground service for background operation
             val serviceIntent = Intent(context, DuqListenerService::class.java).apply {
                 action = DuqListenerService.ACTION_START
@@ -104,6 +113,16 @@ fun MainScreen(
                 Context.BIND_AUTO_CREATE
             )
             isBound = true
+        }
+    }
+
+    // Service binding timeout warning
+    LaunchedEffect(isBound, voiceController) {
+        if (isBound && voiceController == null && bindingStartTime > 0) {
+            delay(AppConfig.SERVICE_BIND_TIMEOUT_MS)
+            if (voiceController == null) {
+                Log.w("MainScreen", "Service binding timeout after ${AppConfig.SERVICE_BIND_TIMEOUT_MS}ms")
+            }
         }
     }
 
@@ -219,11 +238,11 @@ private fun getStatusText(state: DuqState, error: DuqError?): String {
         return error.toDisplayMessage().uppercase()
     }
     return when (state) {
-        DuqState.IDLE -> "SAY \"HEY DUQ\""
-        DuqState.LISTENING, DuqState.RECORDING -> "LISTENING..."
-        DuqState.PROCESSING -> "PROCESSING..."
-        DuqState.PLAYING -> "SPEAKING..."
-        DuqState.ERROR -> "ERROR"
+        DuqState.IDLE -> stringResource(R.string.status_idle)
+        DuqState.LISTENING, DuqState.RECORDING -> stringResource(R.string.status_listening)
+        DuqState.PROCESSING -> stringResource(R.string.status_processing)
+        DuqState.PLAYING -> stringResource(R.string.status_playing)
+        DuqState.ERROR -> stringResource(R.string.status_error)
     }
 }
 

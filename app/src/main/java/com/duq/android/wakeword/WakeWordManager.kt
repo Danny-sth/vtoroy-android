@@ -27,7 +27,6 @@ class WakeWordManager(
 
     companion object {
         private const val TAG = "WakeWordManager"
-        private const val CUSTOM_KEYWORD_FILENAME = "hey_duck.ppn"
     }
 
     fun start() {
@@ -52,7 +51,7 @@ class WakeWordManager(
                 // Fallback: use built-in keyword for development
                 // In production, the custom .ppn file should be present
                 Log.w(TAG, "Custom wake word not found, using fallback")
-                onError("Custom wake word file not found. Please place $CUSTOM_KEYWORD_FILENAME in app's external files directory.")
+                onError("Custom wake word file not found. Please place $AppConfig.WAKE_WORD_FILENAME in app's external files directory.")
                 return
             }
 
@@ -95,20 +94,20 @@ class WakeWordManager(
      */
     private fun getCustomKeywordPath(): String? {
         // Try external files directory first (user can place file here)
-        val externalFile = context.getExternalFilesDir(null)?.resolve(CUSTOM_KEYWORD_FILENAME)
+        val externalFile = context.getExternalFilesDir(null)?.resolve(AppConfig.WAKE_WORD_FILENAME)
         if (externalFile?.exists() == true) {
             return externalFile.absolutePath
         }
 
         // Try internal files directory
-        val internalFile = File(context.filesDir, CUSTOM_KEYWORD_FILENAME)
+        val internalFile = File(context.filesDir, AppConfig.WAKE_WORD_FILENAME)
         if (internalFile.exists()) {
             return internalFile.absolutePath
         }
 
         // Try assets (copy to internal storage on first run)
         try {
-            context.assets.open(CUSTOM_KEYWORD_FILENAME).use { input ->
+            context.assets.open(AppConfig.WAKE_WORD_FILENAME).use { input ->
                 internalFile.outputStream().use { output ->
                     input.copyTo(output)
                 }

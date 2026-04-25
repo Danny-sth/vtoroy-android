@@ -10,11 +10,12 @@
     <string name="save">Save</string>
     <string name="start_service">Start Listening</string>
     <string name="stop_service">Stop Listening</string>
-    <string name="status_idle">Waiting for wake word...</string>
-    <string name="status_listening">Listening...</string>
-    <string name="status_processing">Processing...</string>
-    <string name="status_playing">Playing response...</string>
-    <string name="status_error">Error</string>
+    <string name="status_idle">SAY \"HEY DUQ\"</string>
+    <string name="status_listening">LISTENING...</string>
+    <string name="status_processing">PROCESSING...</string>
+    <string name="status_playing">SPEAKING...</string>
+    <string name="status_error">ERROR</string>
+    <string name="status_recording">LISTENING...</string>
     <string name="status_service_stopped">Service stopped</string>
     <string name="permission_required">Microphone permission required</string>
     <string name="notification_title">Duq Listening</string>

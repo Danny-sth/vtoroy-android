@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.io.FileOutputStream
+import com.duq.android.config.AppConfig
 import kotlin.coroutines.resume
 
 class AudioPlayer(private val context: Context) : AudioPlayerInterface {
@@ -42,7 +43,7 @@ class AudioPlayer(private val context: Context) : AudioPlayerInterface {
         var currentListener: Player.Listener? = null
 
         try {
-            val tempFile = File(context.cacheDir, "response_audio.ogg")
+            val tempFile = File(context.cacheDir, AppConfig.RESPONSE_AUDIO_FILENAME)
             FileOutputStream(tempFile).use { it.write(audioData) }
 
             mainHandler.post {

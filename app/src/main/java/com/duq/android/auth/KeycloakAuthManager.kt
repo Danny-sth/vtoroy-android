@@ -2,8 +2,11 @@ package com.duq.android.auth
 
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.duq.android.config.AppConfig
 import com.duq.android.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -30,7 +33,7 @@ class KeycloakAuthManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "KeycloakAuthManager"
-        private const val PREFS_NAME = "keycloak_auth"
+        private const val ENCRYPTED_PREFS_NAME = "keycloak_secure_prefs"
         private const val KEY_CODE_VERIFIER = "code_verifier"
     }
 
@@ -46,8 +49,22 @@ class KeycloakAuthManager @Inject constructor(
             .build()
     }
 
-    private val prefs by lazy {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    /**
+     * Encrypted SharedPreferences for secure code_verifier storage.
+     * SECURITY: code_verifier is sensitive PKCE data that must be encrypted.
+     */
+    private val encryptedPrefs: SharedPreferences by lazy {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        EncryptedSharedPreferences.create(
+            context,
+            ENCRYPTED_PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
     }
 
     private val authService: AuthorizationService by lazy {
@@ -89,7 +106,7 @@ class KeycloakAuthManager @Inject constructor(
 
         // Store the code verifier for later use in token exchange
         authRequest.codeVerifier?.let { verifier ->
-            prefs.edit().putString(KEY_CODE_VERIFIER, verifier).apply()
+            encryptedPrefs.edit().putString(KEY_CODE_VERIFIER, verifier).apply()
             // Security: Don't log code verifier
         }
 
@@ -100,14 +117,14 @@ class KeycloakAuthManager @Inject constructor(
      * Gets the stored code verifier
      */
     fun getStoredCodeVerifier(): String? {
-        return prefs.getString(KEY_CODE_VERIFIER, null)
+        return encryptedPrefs.getString(KEY_CODE_VERIFIER, null)
     }
 
     /**
      * Clears the stored code verifier
      */
     fun clearCodeVerifier() {
-        prefs.edit().remove(KEY_CODE_VERIFIER).apply()
+        encryptedPrefs.edit().remove(KEY_CODE_VERIFIER).apply()
     }
 
     /**

@@ -18,6 +18,7 @@ import com.duq.android.data.SettingsRepository
 import com.duq.android.error.DuqError
 import com.duq.android.network.DuqWebSocketClient
 import com.duq.android.wakeword.WakeWordManager
+import com.duq.android.wakeword.WakeWordManagerFactory
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ class DuqListenerService : Service(), VoiceServiceController {
     @Inject lateinit var notificationManager: DuqNotificationManager
     @Inject lateinit var voiceCommandProcessor: VoiceCommandProcessor
     @Inject lateinit var webSocketClient: DuqWebSocketClient
+    @Inject lateinit var wakeWordManagerFactory: WakeWordManagerFactory
 
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -200,7 +202,7 @@ class DuqListenerService : Service(), VoiceServiceController {
             }
 
             Log.d(TAG, "Creating new WakeWordManager instance...")
-            wakeWordManager = WakeWordManager(
+            wakeWordManager = wakeWordManagerFactory.create(
                 context = this@DuqListenerService,
                 accessKey = apiKey,
                 onWakeWordDetected = { onWakeWordDetected() },
