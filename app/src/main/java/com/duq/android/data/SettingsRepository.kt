@@ -48,24 +48,35 @@ class SettingsRepository(private val context: Context) {
     /**
      * Encrypted SharedPreferences for secure token storage.
      * Uses AES256 encryption with MasterKey from Android Keystore.
+     *
+     * SECURITY: NO FALLBACK to unencrypted storage. If encryption fails,
+     * we throw an exception rather than silently downgrade security.
      */
     private val encryptedPrefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
 
-            EncryptedSharedPreferences.create(
-                context,
-                ENCRYPTED_PREFS_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+        EncryptedSharedPreferences.create(
+            context,
+            ENCRYPTED_PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    /**
+     * Flag indicating if encrypted storage is available.
+     * Use this to check before storing sensitive data.
+     */
+    val isEncryptionAvailable: Boolean by lazy {
+        try {
+            encryptedPrefs // Access to trigger initialization
+            true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create EncryptedSharedPreferences, falling back to regular prefs", e)
-            // Fallback to regular SharedPreferences if encryption fails (shouldn't happen)
-            context.getSharedPreferences(ENCRYPTED_PREFS_NAME, Context.MODE_PRIVATE)
+            Log.e(TAG, "Encrypted storage unavailable: ${e.message}")
+            false
         }
     }
 
@@ -137,19 +148,54 @@ class SettingsRepository(private val context: Context) {
         emit(token.isNotBlank())
     }
 
+    // ========== SYNCHRONOUS METHODS (for OkHttp Interceptor) ==========
+    // These are safe to call from any thread as SharedPreferences is thread-safe
+
     /**
-     * Get current access token synchronously (from encrypted storage)
+     * Get current access token synchronously.
+     * Thread-safe. Use in OkHttp interceptors.
      */
-    suspend fun getAccessToken(): String {
+    fun getAccessTokenSync(): String {
         return encryptedPrefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
     }
 
     /**
-     * Get current refresh token synchronously (from encrypted storage)
+     * Get current refresh token synchronously.
+     * Thread-safe. Use in OkHttp interceptors.
      */
-    suspend fun getRefreshToken(): String {
+    fun getRefreshTokenSync(): String {
         return encryptedPrefs.getString(KEY_REFRESH_TOKEN, "") ?: ""
     }
+
+    /**
+     * Update tokens synchronously.
+     * Thread-safe. Use in OkHttp interceptors.
+     */
+    fun updateAccessTokenSync(
+        accessToken: String,
+        refreshToken: String?,
+        expiresAt: Long
+    ) {
+        encryptedPrefs.edit()
+            .putString(KEY_ACCESS_TOKEN, accessToken)
+            .apply {
+                refreshToken?.let { putString(KEY_REFRESH_TOKEN, it) }
+            }
+            .putLong(KEY_TOKEN_EXPIRES_AT, expiresAt)
+            .apply()
+    }
+
+    // ========== SUSPEND METHODS (for coroutines) ==========
+
+    /**
+     * Get current access token (from encrypted storage)
+     */
+    suspend fun getAccessToken(): String = getAccessTokenSync()
+
+    /**
+     * Get current refresh token (from encrypted storage)
+     */
+    suspend fun getRefreshToken(): String = getRefreshTokenSync()
 
     /**
      * Get current ID token synchronously (from encrypted storage)

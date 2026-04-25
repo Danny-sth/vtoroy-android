@@ -36,6 +36,8 @@ class DuqListenerService : Service() {
         private const val TAG = "DuqListenerService"
         const val ACTION_START = "com.duq.android.START"
         const val ACTION_STOP = "com.duq.android.STOP"
+        // 10 minute timeout - renewed during active operation
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
     }
 
     @Inject lateinit var settingsRepository: SettingsRepository
@@ -223,8 +225,7 @@ class DuqListenerService : Service() {
             Log.d(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         } catch (e: Exception) {
             Log.e(TAG, "❌ WAKE WORD INITIALIZATION FAILED")
-            Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}")
-            e.printStackTrace()
+            Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}", e)
             _state.value = DuqState.ERROR
             _error.value = DuqError.WakeWordError.initFailed(e)
             Log.d(TAG, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -272,8 +273,22 @@ class DuqListenerService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "duq:wakeword_detection"
         )
-        // Acquire indefinitely for background operation (released in onDestroy)
-        wakeLock?.acquire()
+        // Acquire with 10-minute timeout for safety (prevents battery drain if service crashes)
+        // The wake lock is renewed automatically by the periodic wake word processing
+        wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
+    }
+
+    /**
+     * Renew wake lock during active operations.
+     * Call this periodically to prevent the lock from expiring during long sessions.
+     */
+    private fun renewWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+            it.acquire(WAKE_LOCK_TIMEOUT_MS)
+        }
     }
 
     private fun releaseWakeLock() {

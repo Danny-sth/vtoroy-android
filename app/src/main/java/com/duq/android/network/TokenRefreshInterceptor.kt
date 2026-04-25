@@ -4,13 +4,13 @@ import android.util.Log
 import com.duq.android.auth.KeycloakConfig
 import com.duq.android.config.AppConfig
 import com.duq.android.data.SettingsRepository
-import kotlinx.coroutines.runBlocking
 import okhttp3.FormBody
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -24,7 +24,10 @@ import javax.inject.Singleton
  * 2. Retries the original request with the new access token
  * 3. If refresh fails, propagates the 401 to trigger re-authentication
  *
- * Thread-safe: Uses AtomicBoolean to prevent concurrent refresh attempts.
+ * Thread-safe: Uses CountDownLatch to prevent concurrent refresh attempts
+ * without blocking with Thread.sleep().
+ *
+ * IMPORTANT: Uses synchronous SettingsRepository methods to avoid runBlocking.
  */
 @Singleton
 class TokenRefreshInterceptor @Inject constructor(
@@ -33,10 +36,15 @@ class TokenRefreshInterceptor @Inject constructor(
 
     companion object {
         private const val TAG = "TokenRefreshInterceptor"
+        private const val REFRESH_WAIT_TIMEOUT_MS = 30_000L
     }
 
     // Prevent multiple concurrent token refreshes
     private val isRefreshing = AtomicBoolean(false)
+
+    // Latch for waiting threads - recreated on each refresh cycle
+    @Volatile
+    private var refreshLatch: CountDownLatch? = null
 
     // Dedicated client for token refresh (no interceptors to avoid recursion)
     private val refreshClient by lazy {
@@ -59,61 +67,73 @@ class TokenRefreshInterceptor @Inject constructor(
 
         Log.d(TAG, "Received 401, attempting token refresh")
 
-        // Attempt token refresh
-        synchronized(this) {
-            // Double-check: another thread might have refreshed while we waited
-            if (isRefreshing.get()) {
-                Log.d(TAG, "Token refresh already in progress, waiting...")
-                // Wait for the other thread to finish, then retry with potentially new token
-                while (isRefreshing.get()) {
-                    Thread.sleep(100)
+        // Check if another thread is already refreshing
+        if (isRefreshing.compareAndSet(false, true)) {
+            // We're the first - create a new latch and start refresh
+            refreshLatch = CountDownLatch(1)
+
+            try {
+                return performRefreshAndRetry(chain, originalRequest, response)
+            } finally {
+                isRefreshing.set(false)
+                refreshLatch?.countDown()
+            }
+        } else {
+            // Another thread is refreshing - wait for it to finish
+            Log.d(TAG, "Token refresh already in progress, waiting...")
+            val latch = refreshLatch
+
+            if (latch != null) {
+                val completed = latch.await(REFRESH_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                if (!completed) {
+                    Log.w(TAG, "Timeout waiting for token refresh")
+                    return response // Return original 401
                 }
-                return retryWithNewToken(chain, originalRequest, response)
             }
 
-            isRefreshing.set(true)
+            return retryWithNewToken(chain, originalRequest, response)
+        }
+    }
+
+    private fun performRefreshAndRetry(
+        chain: Interceptor.Chain,
+        originalRequest: Request,
+        originalResponse: Response
+    ): Response {
+        // Use sync method - no runBlocking needed
+        val refreshToken = settingsRepository.getRefreshTokenSync()
+
+        if (refreshToken.isBlank()) {
+            Log.w(TAG, "No refresh token available, cannot refresh")
+            return originalResponse // Return original 401
         }
 
-        try {
-            val refreshToken = runBlocking { settingsRepository.getRefreshToken() }
+        val refreshResult = refreshAccessToken(refreshToken)
 
-            if (refreshToken.isBlank()) {
-                Log.w(TAG, "No refresh token available, cannot refresh")
-                isRefreshing.set(false)
-                return response // Return original 401
-            }
+        if (refreshResult.success) {
+            Log.d(TAG, "Token refresh successful, saving new tokens")
 
-            val refreshResult = refreshAccessToken(refreshToken)
+            // Use sync method - no runBlocking needed
+            settingsRepository.updateAccessTokenSync(
+                accessToken = refreshResult.accessToken,
+                refreshToken = refreshResult.newRefreshToken,
+                expiresAt = refreshResult.expiresAt
+            )
 
-            if (refreshResult.success) {
-                Log.d(TAG, "Token refresh successful, saving new tokens")
+            // Close the original response before retrying
+            originalResponse.close()
 
-                // Save new tokens
-                runBlocking {
-                    settingsRepository.updateAccessToken(
-                        accessToken = refreshResult.accessToken,
-                        refreshToken = refreshResult.newRefreshToken,
-                        expiresAt = refreshResult.expiresAt
-                    )
-                }
+            // Retry the original request with the new token
+            val newRequest = originalRequest.newBuilder()
+                .removeHeader("Authorization")
+                .addHeader("Authorization", "Bearer ${refreshResult.accessToken}")
+                .build()
 
-                // Close the original response before retrying
-                response.close()
-
-                // Retry the original request with the new token
-                val newRequest = originalRequest.newBuilder()
-                    .removeHeader("Authorization")
-                    .addHeader("Authorization", "Bearer ${refreshResult.accessToken}")
-                    .build()
-
-                Log.d(TAG, "Retrying original request with new token")
-                return chain.proceed(newRequest)
-            } else {
-                Log.e(TAG, "Token refresh failed: ${refreshResult.error}")
-                return response // Return original 401 to trigger re-auth
-            }
-        } finally {
-            isRefreshing.set(false)
+            Log.d(TAG, "Retrying original request with new token")
+            return chain.proceed(newRequest)
+        } else {
+            Log.e(TAG, "Token refresh failed: ${refreshResult.error}")
+            return originalResponse // Return original 401 to trigger re-auth
         }
     }
 
@@ -122,7 +142,8 @@ class TokenRefreshInterceptor @Inject constructor(
         originalRequest: Request,
         originalResponse: Response
     ): Response {
-        val newToken = runBlocking { settingsRepository.getAccessToken() }
+        // Use sync method - no runBlocking needed
+        val newToken = settingsRepository.getAccessTokenSync()
 
         if (newToken.isBlank()) {
             return originalResponse

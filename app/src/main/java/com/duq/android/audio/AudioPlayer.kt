@@ -31,6 +31,16 @@ class AudioPlayer(private val context: Context) : AudioPlayerInterface {
     }
 
     override suspend fun playAudio(audioData: ByteArray): Boolean = suspendCancellableCoroutine { continuation ->
+        // Validate input
+        if (audioData.isEmpty()) {
+            Log.w(TAG, "Empty audio data, skipping playback")
+            continuation.resume(false)
+            return@suspendCancellableCoroutine
+        }
+
+        // Track current listener for cleanup
+        var currentListener: Player.Listener? = null
+
         try {
             val tempFile = File(context.cacheDir, "response_audio.ogg")
             FileOutputStream(tempFile).use { it.write(audioData) }
@@ -39,12 +49,13 @@ class AudioPlayer(private val context: Context) : AudioPlayerInterface {
                 try {
                     val player = exoPlayer ?: ExoPlayer.Builder(context).build().also { exoPlayer = it }
 
-                    player.addListener(object : Player.Listener {
+                    // Create listener with proper cleanup
+                    val listener = object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             when (playbackState) {
                                 Player.STATE_ENDED -> {
                                     Log.d(TAG, "Playback ended")
-                                    player.removeListener(this)
+                                    cleanup(player, this)
                                     if (continuation.isActive) {
                                         continuation.resume(true)
                                     }
@@ -57,12 +68,15 @@ class AudioPlayer(private val context: Context) : AudioPlayerInterface {
 
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                             Log.e(TAG, "Playback error", error)
-                            player.removeListener(this)
+                            cleanup(player, this)
                             if (continuation.isActive) {
                                 continuation.resume(false)
                             }
                         }
-                    })
+                    }
+
+                    currentListener = listener
+                    player.addListener(listener)
 
                     val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
                     player.setMediaItem(mediaItem)
@@ -78,8 +92,16 @@ class AudioPlayer(private val context: Context) : AudioPlayerInterface {
                 }
             }
 
+            // Proper cleanup on coroutine cancellation
             continuation.invokeOnCancellation {
-                mainHandler.post { exoPlayer?.stop() }
+                mainHandler.post {
+                    exoPlayer?.let { player ->
+                        currentListener?.let { listener ->
+                            cleanup(player, listener)
+                        }
+                        player.stop()
+                    }
+                }
             }
 
         } catch (e: Exception) {
@@ -87,6 +109,17 @@ class AudioPlayer(private val context: Context) : AudioPlayerInterface {
             if (continuation.isActive) {
                 continuation.resume(false)
             }
+        }
+    }
+
+    /**
+     * Cleanup listener from player to prevent memory leaks.
+     */
+    private fun cleanup(player: ExoPlayer, listener: Player.Listener) {
+        try {
+            player.removeListener(listener)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error removing listener: ${e.message}")
         }
     }
 
