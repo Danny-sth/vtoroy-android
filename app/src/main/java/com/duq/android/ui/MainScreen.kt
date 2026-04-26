@@ -48,7 +48,7 @@ import com.duq.android.config.AppConfig
 import com.duq.android.error.DuqError
 import com.duq.android.service.DuqListenerService
 import com.duq.android.service.VoiceServiceController
-import com.duq.android.ui.components.ArcReactor
+import com.duq.android.ui.components.DuqDuck
 import com.duq.android.ui.components.MessagesList
 import com.duq.android.ui.theme.DuqColors
 
@@ -327,9 +327,9 @@ fun MainScreen(
                     .padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                ArcReactor(
+                DuqDuck(
                     state = state,
-                    modifier = Modifier.size(120.dp) // Reduced to make room for input
+                    modifier = Modifier.size(140.dp)
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
