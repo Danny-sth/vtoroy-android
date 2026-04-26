@@ -23,6 +23,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.input.ImeAction
@@ -76,8 +79,22 @@ fun MainScreen(
     var showConversationPicker by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
 
+    // Snackbar for error display
+    val snackbarHostState = remember { SnackbarHostState() }
+
     // Combine errors - service error takes priority
     val currentError = serviceError ?: viewModelError
+
+    // Show snackbar when error occurs
+    LaunchedEffect(currentError) {
+        currentError?.let { error ->
+            snackbarHostState.showSnackbar(
+                message = error.toDisplayMessage(),
+                withDismissAction = true
+            )
+            viewModel.clearError()
+        }
+    }
 
     val serviceConnection = remember {
         object : ServiceConnection {
@@ -418,6 +435,20 @@ fun MainScreen(
                     )
                 }
             }
+        }
+
+        // Snackbar for error messages
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 100.dp)
+        ) { data ->
+            Snackbar(
+                snackbarData = data,
+                containerColor = DuqColors.error,
+                contentColor = Color.White
+            )
         }
     }
 }
