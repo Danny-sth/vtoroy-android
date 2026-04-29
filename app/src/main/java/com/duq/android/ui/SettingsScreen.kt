@@ -264,6 +264,7 @@ fun SettingsScreen(onSettingsSaved: () -> Unit) {
                         scope.launch {
                             val idToken = settingsRepository.getIdToken()
                             keycloakAuthManager.logout(idToken.ifBlank { null })
+                            com.duq.android.worker.TokenRefreshWorker.cancel(context)
                             successMessage = null
                         }
                     },

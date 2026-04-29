@@ -26,6 +26,6 @@ object KeycloakConfig {
     const val REDIRECT_URI = "com.duq.android://oauth/callback"
     const val POST_LOGOUT_REDIRECT_URI = "com.duq.android://oauth/logout"
 
-    // Scopes
-    val SCOPES = listOf("openid", "profile", "email")
+    // Scopes - offline_access gives us offline tokens that survive session expiry
+    val SCOPES = listOf("openid", "profile", "email", "offline_access")
 }
