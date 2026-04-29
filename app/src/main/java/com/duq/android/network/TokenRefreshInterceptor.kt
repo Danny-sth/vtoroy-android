@@ -200,6 +200,8 @@ class TokenRefreshInterceptor @Inject constructor(
             return chain.proceed(newRequest)
         } else {
             Log.e(TAG, "Token refresh failed: ${refreshResult.error}")
+            // Clear tokens to force re-login
+            settingsRepository.clearTokensSync()
             return originalResponse // Return original 401 to trigger re-auth
         }
     }

@@ -299,6 +299,20 @@ class SettingsRepository(private val context: Context) {
     }
 
     /**
+     * Clear tokens synchronously (for use in interceptors)
+     * Use clearAuth() for full logout including DataStore
+     */
+    fun clearTokensSync() {
+        encryptedPrefs.edit()
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_ID_TOKEN)
+            .remove(KEY_TOKEN_EXPIRES_AT)
+            .apply()
+        Log.d("SettingsRepository", "Tokens cleared synchronously")
+    }
+
+    /**
      * Clear all auth data (logout)
      * Clears both encrypted token storage and user info from DataStore
      */
