@@ -148,8 +148,12 @@ class ConversationRepository @Inject constructor(
      * Get messages as Flow for reactive UI updates
      */
     fun getMessagesFlow(conversationId: String): Flow<List<Message>> {
+        Log.d(TAG, "🔄 getMessagesFlow called for conversation: $conversationId")
         return messageDao.getMessagesForConversationFlow(conversationId)
-            .map { entities -> entities.map { it.toDomain() } }
+            .map { entities ->
+                Log.d(TAG, "📨 Flow emitting ${entities.size} messages for conversation $conversationId")
+                entities.map { it.toDomain() }
+            }
     }
 
     /**
@@ -204,20 +208,34 @@ class ConversationRepository @Inject constructor(
         conversationId: String,
         content: String,
         role: String = "user"
-    ) {
-        val tempId = "temp-${java.util.UUID.randomUUID()}" // Temp ID to avoid conflicts
-        val entity = MessageEntity(
-            id = tempId,
-            conversationId = conversationId,
-            role = role,
-            content = content,
-            hasAudio = false,
-            audioDurationMs = null,
-            waveform = null,
-            createdAt = System.currentTimeMillis() / 1000
-        )
-        messageDao.insertMessage(entity)
-        Log.d(TAG, "Inserted local message with temp id: $tempId")
+    ): Boolean {
+        return try {
+            // CRITICAL: Check if conversation exists in DB (FK constraint)
+            val conversationExists = conversationDao.getConversationById(conversationId) != null
+            if (!conversationExists) {
+                Log.e(TAG, "❌ CANNOT insert message - conversation $conversationId NOT in local DB!")
+                Log.e(TAG, "❌ This is a Foreign Key constraint issue. Conversation must be cached first.")
+                return false
+            }
+
+            val tempId = "temp-${java.util.UUID.randomUUID()}" // Temp ID to avoid conflicts
+            val entity = MessageEntity(
+                id = tempId,
+                conversationId = conversationId,
+                role = role,
+                content = content,
+                hasAudio = false,
+                audioDurationMs = null,
+                waveform = null,
+                createdAt = System.currentTimeMillis() / 1000
+            )
+            messageDao.insertMessage(entity)
+            Log.d(TAG, "✅ Inserted local message with temp id: $tempId for conversation: $conversationId")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ FAILED to insert local message: ${e.message}", e)
+            false
+        }
     }
 
     /**

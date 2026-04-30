@@ -3,29 +3,34 @@ package com.duq.android.ui
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.duq.android.config.AppConfig
 import com.duq.android.data.ConversationRepository
 import com.duq.android.data.SettingsRepository
 import com.duq.android.data.model.Conversation
 import com.duq.android.data.model.Message
 import com.duq.android.error.DuqError
 import com.duq.android.network.DuqApiClient
+import com.duq.android.network.DuqWebSocketClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
 class ConversationViewModel @Inject constructor(
     private val conversationRepository: ConversationRepository,
     private val settingsRepository: SettingsRepository,
-    private val duqApiClient: DuqApiClient
+    private val duqApiClient: DuqApiClient,
+    private val webSocketClient: DuqWebSocketClient
 ) : ViewModel() {
 
     companion object {
@@ -212,7 +217,7 @@ class ConversationViewModel @Inject constructor(
     }
 
     /**
-     * Send a text message to Duq
+     * Send a text message to Duq via WebSocket (no polling!)
      */
     fun sendTextMessage(message: String) {
         if (message.isBlank()) return
@@ -236,7 +241,7 @@ class ConversationViewModel @Inject constructor(
                     return@launch
                 }
 
-                Log.d(TAG, "Sending text message: ${message.take(50)}...")
+                Log.d(TAG, "📤 Sending text message: ${message.take(50)}...")
 
                 // Optimistic update: show user message immediately
                 val conversationId = _currentConversationId.value
@@ -245,29 +250,43 @@ class ConversationViewModel @Inject constructor(
                     Log.d(TAG, "✅ Optimistic update: user message added to UI")
                 }
 
+                // Ensure WebSocket is connected
+                if (!webSocketClient.isConnected()) {
+                    Log.d(TAG, "🔌 Connecting WebSocket...")
+                    webSocketClient.connect()
+                }
+
                 when (val result = duqApiClient.queueTextMessage(authToken, message, userId)) {
                     is DuqApiClient.SendResult.Queued -> {
-                        Log.d(TAG, "Message queued with task_id: ${result.taskId}")
+                        Log.d(TAG, "📨 Message queued, task_id: ${result.taskId}")
 
-                        // Poll for task completion
-                        Log.d(TAG, "Polling for task result...")
-                        val pollResult = duqApiClient.pollForTask(authToken, result.taskId)
-
-                        when (pollResult) {
-                            is DuqApiClient.ApiResult.Success -> {
-                                Log.d(TAG, "✅ Task completed, refreshing messages")
-                            }
-                            is DuqApiClient.ApiResult.Error -> {
-                                Log.e(TAG, "Task failed: ${pollResult.message}")
-                                _error.value = DuqError.NetworkError(pollResult.message)
-                            }
+                        // Wait for WebSocket response (NO POLLING!)
+                        val wsResponse = withTimeoutOrNull(AppConfig.WS_RESPONSE_TIMEOUT_MS) {
+                            webSocketClient.messages
+                                .filter { it.taskId == result.taskId }
+                                .first()
                         }
 
-                        // Refresh messages to show user message and response
+                        if (wsResponse != null) {
+                            Log.d(TAG, "✅ WebSocket response: type=${wsResponse.type}")
+                            when (wsResponse.type) {
+                                "response", "success" -> {
+                                    Log.d(TAG, "✅ Task completed via WebSocket")
+                                }
+                                "error" -> {
+                                    Log.e(TAG, "❌ Task failed: ${wsResponse.error}")
+                                    _error.value = DuqError.NetworkError(wsResponse.error ?: "Task failed")
+                                }
+                            }
+                        } else {
+                            Log.w(TAG, "⏱️ WebSocket timeout, refreshing messages anyway")
+                        }
+
+                        // Refresh messages from server
                         refreshMessages()
                     }
                     is DuqApiClient.SendResult.Error -> {
-                        Log.e(TAG, "Failed to send message: ${result.message}")
+                        Log.e(TAG, "❌ Failed to queue message: ${result.message}")
                         _error.value = DuqError.NetworkError(result.message)
                     }
                     else -> {

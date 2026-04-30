@@ -7,6 +7,7 @@ import com.duq.android.data.model.Message
 import com.duq.android.data.model.MessageRole
 import com.duq.android.error.DuqError
 import com.duq.android.network.DuqApiClient
+import com.duq.android.network.DuqWebSocketClient
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,9 @@ class ConversationViewModelTest {
 
     @MockK
     private lateinit var duqApiClient: DuqApiClient
+
+    @MockK
+    private lateinit var webSocketClient: DuqWebSocketClient
 
     private lateinit var viewModel: ConversationViewModel
     private val testDispatcher = StandardTestDispatcher()
@@ -82,7 +86,7 @@ class ConversationViewModelTest {
         coEvery { conversationRepository.refreshMessages(any(), any()) } just Runs
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(testMessages)
 
-        return ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        return ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
     }
 
     @Test
@@ -92,7 +96,7 @@ class ConversationViewModelTest {
         coEvery { conversationRepository.getCurrentConversationId(any()) } returns null
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(emptyList())
 
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
         advanceUntilIdle()
 
         assertTrue(viewModel.conversations.value.isEmpty())
@@ -116,7 +120,7 @@ class ConversationViewModelTest {
         coEvery { settingsRepository.getAccessToken() } returns ""
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(emptyList())
 
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
         advanceUntilIdle()
 
         assertTrue(viewModel.conversations.value.isEmpty())
@@ -130,7 +134,7 @@ class ConversationViewModelTest {
         coEvery { conversationRepository.getConversations(any(), any()) } throws SocketTimeoutException()
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(emptyList())
 
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
         advanceUntilIdle()
 
         assertTrue(viewModel.error.value is DuqError.NetworkError)
@@ -143,7 +147,7 @@ class ConversationViewModelTest {
         coEvery { conversationRepository.getConversations(any(), any()) } throws UnknownHostException()
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(emptyList())
 
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
         advanceUntilIdle()
 
         assertTrue(viewModel.error.value is DuqError.NetworkError)
@@ -239,7 +243,7 @@ class ConversationViewModelTest {
         coEvery { conversationRepository.getConversations(any(), any()) } throws SocketTimeoutException()
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(emptyList())
 
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
         advanceUntilIdle()
 
         assertNotNull(viewModel.error.value)
@@ -260,7 +264,7 @@ class ConversationViewModelTest {
         coEvery { conversationRepository.refreshMessages(any(), any()) } just Runs
         every { conversationRepository.getMessagesFlow(any()) } returns flowOf(testMessages)
 
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient)
+        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
 
         // After init completes
         advanceUntilIdle()
