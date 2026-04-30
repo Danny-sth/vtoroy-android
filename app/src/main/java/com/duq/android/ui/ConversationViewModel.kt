@@ -210,7 +210,11 @@ class ConversationViewModel @Inject constructor(
      * Uses optimistic update - message appears immediately, no loading spinner.
      */
     fun sendTextMessage(message: String) {
-        if (message.isBlank()) return
+        Log.d(TAG, "🔘 sendTextMessage called with: '${message.take(50)}'")
+        if (message.isBlank()) {
+            Log.w(TAG, "⚠️ Message is blank, ignoring")
+            return
+        }
 
         viewModelScope.launch {
             try {

@@ -11,6 +11,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -39,10 +43,22 @@ fun MessagesList(
 ) {
     val listState = rememberLazyListState()
 
-    // Auto-scroll to bottom when new messages arrive
+    // Track previous message count to detect initial load vs new messages
+    var previousMessageCount by remember { mutableIntStateOf(0) }
+
+    // Scroll to bottom: instant on initial load, animated for new messages
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+            val isInitialLoad = previousMessageCount == 0
+            previousMessageCount = messages.size
+
+            if (isInitialLoad) {
+                // Initial load - instant scroll, no animation
+                listState.scrollToItem(messages.size - 1)
+            } else {
+                // New message arrived - smooth scroll
+                listState.animateScrollToItem(messages.size - 1)
+            }
         }
     }
 

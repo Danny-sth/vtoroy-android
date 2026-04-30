@@ -183,9 +183,9 @@ fun MainScreen(
                         )
                         isBound = true
                     }
-                    // Load conversations and messages when app gains focus
-                    // This handles the case where auth token was obtained after ViewModel init
-                    viewModel.loadConversationsAndMessages()
+                    // Only refresh messages, don't reload entire UI
+                    // Full load happens in ViewModel init
+                    viewModel.refreshMessages()
                 }
                 Lifecycle.Event.ON_STOP -> {
                     // Only unbind, don't stop service - it should keep running for WebSocket
@@ -412,6 +412,7 @@ fun MainScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
+                            Log.d("MainScreen", "⌨️ Keyboard Send pressed, text='${textInput.take(20)}'")
                             if (textInput.isNotBlank()) {
                                 viewModel.sendTextMessage(textInput)
                                 textInput = ""
@@ -432,6 +433,7 @@ fun MainScreen(
                             else DuqColors.surfaceElevated
                         )
                         .clickable(enabled = textInput.isNotBlank()) {
+                            Log.d("MainScreen", "🔘 Send button clicked, text='${textInput.take(20)}'")
                             viewModel.sendTextMessage(textInput)
                             textInput = ""
                         },
