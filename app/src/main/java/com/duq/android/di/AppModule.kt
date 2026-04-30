@@ -18,7 +18,6 @@ import com.duq.android.auth.UserInfoFetcher
 import com.duq.android.data.ConversationRepository
 import com.duq.android.data.SettingsRepository
 import com.duq.android.data.local.DuqDatabase
-import com.duq.android.data.local.Migrations
 import com.duq.android.data.local.dao.ConversationDao
 import com.duq.android.data.local.dao.MessageDao
 import com.duq.android.audio.BeepPlayer
@@ -133,7 +132,6 @@ object AppModule {
             DuqDatabase::class.java,
             "duq_database"
         )
-            .addMigrations(*Migrations.ALL)
             .fallbackToDestructiveMigration()
             .build()
     }
