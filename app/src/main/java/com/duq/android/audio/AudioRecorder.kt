@@ -17,8 +17,7 @@ import java.io.FileOutputStream
 
 class AudioRecorder(
     private val context: Context,
-    private val vad: VoiceActivityDetectorInterface,
-    private val maxRecordingMs: Long = AppConfig.MAX_RECORDING_MS
+    private val vad: VoiceActivityDetectorInterface
 ) : AudioRecorderInterface {
 
     companion object {
@@ -65,10 +64,8 @@ class AudioRecorder(
                 val buffer = ShortArray(bufferSize / 2)
                 val recordingStartTime = System.currentTimeMillis()
 
-                Log.d(TAG, "🎤 Started recording")
+                Log.d(TAG, "🎤 Started recording (no time limit, VAD will stop)")
                 Log.d(TAG, "Buffer size: $bufferSize bytes (${bufferSize / 2} samples)")
-                Log.d(TAG, "Max duration: ${maxRecordingMs}ms")
-                Log.d(TAG, "Min duration: ${AppConfig.MIN_RECORDING_MS}ms")
 
                 var bufferCount = 0
 
@@ -98,13 +95,6 @@ class AudioRecorder(
                             Log.d(TAG, "Total buffers: $bufferCount")
                             break
                         }
-                    }
-
-                    // Check max recording time
-                    if (elapsedMs >= maxRecordingMs) {
-                        Log.d(TAG, "⏱️ Max recording time reached (${maxRecordingMs}ms)")
-                        Log.d(TAG, "Total buffers: $bufferCount")
-                        break
                     }
                 }
             }

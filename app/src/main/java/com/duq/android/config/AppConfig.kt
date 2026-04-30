@@ -18,7 +18,6 @@ object AppConfig {
 
     // Audio recording limits (milliseconds)
     const val MIN_RECORDING_MS = 1000L
-    const val MAX_RECORDING_MS = 10000L
 
     // Voice Activity Detection
     const val VAD_SILENCE_TIMEOUT_MS = 2000L

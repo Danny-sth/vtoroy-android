@@ -40,18 +40,13 @@ fun SettingsScreen(onSettingsSaved: () -> Unit) {
     val savedSilenceTimeout by settingsRepository.silenceTimeoutMs.collectAsState(
         initial = SettingsRepository.DEFAULT_SILENCE_TIMEOUT_MS
     )
-    val savedMaxRecording by settingsRepository.maxRecordingMs.collectAsState(
-        initial = SettingsRepository.DEFAULT_MAX_RECORDING_MS
-    )
 
     var wakeWordSensitivity by remember { mutableFloatStateOf(savedWakeWordSensitivity) }
     var silenceTimeoutMs by remember { mutableFloatStateOf(savedSilenceTimeout.toFloat()) }
-    var maxRecordingMs by remember { mutableFloatStateOf(savedMaxRecording.toFloat()) }
 
     // Sync with saved values when they load
     LaunchedEffect(savedWakeWordSensitivity) { wakeWordSensitivity = savedWakeWordSensitivity }
     LaunchedEffect(savedSilenceTimeout) { silenceTimeoutMs = savedSilenceTimeout.toFloat() }
-    LaunchedEffect(savedMaxRecording) { maxRecordingMs = savedMaxRecording.toFloat() }
 
     var isAuthenticating by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -353,29 +348,6 @@ fun SettingsScreen(onSettingsSaved: () -> Unit) {
                 },
                 valueRange = 1000f..4000f,
                 steps = 5,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Max Recording Duration
-            Text(
-                text = "Max Recording: ${(maxRecordingMs / 1000).roundToInt()} sec",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = "Maximum voice message length",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Slider(
-                value = maxRecordingMs,
-                onValueChange = { maxRecordingMs = it },
-                onValueChangeFinished = {
-                    settingsRepository.saveMaxRecordingMs(maxRecordingMs.toLong())
-                },
-                valueRange = 5000f..30000f,
-                steps = 4,
                 modifier = Modifier.fillMaxWidth()
             )
 
