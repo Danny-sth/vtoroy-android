@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,9 +23,9 @@ import com.duq.android.ui.theme.DuqColors
 
 /**
  * List of chat messages with audio playback support.
+ * No loading spinners - uses optimistic updates and skeleton loaders.
  *
  * @param messages List of messages to display
- * @param isLoading Whether messages are loading
  * @param audioPlaybackInfo Current audio playback info (which message is playing, progress, etc.)
  * @param onAudioPlayPauseClick Callback when play/pause is clicked for a message
  * @param modifier Modifier
@@ -34,7 +33,6 @@ import com.duq.android.ui.theme.DuqColors
 @Composable
 fun MessagesList(
     messages: List<Message>,
-    isLoading: Boolean = false,
     audioPlaybackInfo: PlaybackInfo = PlaybackInfo(),
     onAudioPlayPauseClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -49,12 +47,7 @@ fun MessagesList(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (isLoading && messages.isEmpty()) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = DuqColors.primary
-            )
-        } else if (messages.isEmpty()) {
+        if (messages.isEmpty()) {
             Text(
                 text = "No messages yet\nSay \"Hey Duq\" to start",
                 color = DuqColors.textTertiary,

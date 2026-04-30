@@ -71,7 +71,6 @@ fun MainScreen(
     val serviceError by voiceController?.error?.collectAsState() ?: remember { mutableStateOf<DuqError?>(null) }
     val viewModelError by viewModel.error.collectAsState()
     val messages by viewModel.messages.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
     val conversations by viewModel.conversations.collectAsState()
     val currentConversation by viewModel.currentConversation.collectAsState()
 
@@ -368,10 +367,9 @@ fun MainScreen(
                 )
             }
 
-            // Messages list - middle section
+            // Messages list - middle section (no loading spinner, uses optimistic updates)
             MessagesList(
                 messages = messages,
-                isLoading = isLoading,
                 audioPlaybackInfo = audioPlaybackInfo,
                 onAudioPlayPauseClick = { messageId ->
                     audioPlaybackManager.playOrToggle(messageId)

@@ -101,7 +101,6 @@ class ConversationViewModelTest {
 
         assertTrue(viewModel.conversations.value.isEmpty())
         assertNull(viewModel.currentConversation.value)
-        assertFalse(viewModel.isLoading.value)
     }
 
     @Test
@@ -253,22 +252,4 @@ class ConversationViewModelTest {
         assertNull(viewModel.error.value)
     }
 
-    @Test
-    fun `isLoading is true during load and false after`() = runTest {
-        coEvery { settingsRepository.getAccessToken() } returns "test-token"
-        coEvery { conversationRepository.getConversations(any(), any()) } coAnswers {
-            // Simulate delay
-            Result.success(listOf(testConversation))
-        }
-        coEvery { conversationRepository.getCurrentConversationId(any()) } returns testConversation.id
-        coEvery { conversationRepository.refreshMessages(any(), any()) } just Runs
-        every { conversationRepository.getMessagesFlow(any()) } returns flowOf(testMessages)
-
-        viewModel = ConversationViewModel(conversationRepository, settingsRepository, duqApiClient, webSocketClient)
-
-        // After init completes
-        advanceUntilIdle()
-
-        assertFalse(viewModel.isLoading.value)
-    }
 }

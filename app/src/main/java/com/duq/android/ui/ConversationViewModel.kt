@@ -60,9 +60,6 @@ class ConversationViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
     private val _error = MutableStateFlow<DuqError?>(null)
     val error: StateFlow<DuqError?> = _error.asStateFlow()
 
@@ -76,13 +73,11 @@ class ConversationViewModel @Inject constructor(
     fun loadConversationsAndMessages() {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
                 _error.value = null
 
                 val authToken = settingsRepository.getAccessToken()
                 if (authToken.isEmpty()) {
                     Log.w(TAG, "No auth token available")
-                    _isLoading.value = false
                     return@launch
                 }
 
@@ -116,8 +111,6 @@ class ConversationViewModel @Inject constructor(
                     is java.io.IOException -> DuqError.NetworkError(e.message ?: "Network error")
                     else -> DuqError.NetworkError("Failed to load conversations: ${e.message}")
                 }
-            } finally {
-                _isLoading.value = false
             }
         }
     }
@@ -155,8 +148,6 @@ class ConversationViewModel @Inject constructor(
     fun loadMessagesForConversation(conversationId: String) {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
-
                 val authToken = settingsRepository.getAccessToken()
                 if (authToken.isEmpty()) return@launch
 
@@ -176,8 +167,6 @@ class ConversationViewModel @Inject constructor(
                     is java.io.IOException -> DuqError.NetworkError(e.message ?: "Network error")
                     else -> DuqError.NetworkError("Failed to load messages: ${e.message}")
                 }
-            } finally {
-                _isLoading.value = false
             }
         }
     }
