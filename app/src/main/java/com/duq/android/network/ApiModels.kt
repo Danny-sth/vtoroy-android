@@ -16,7 +16,7 @@ data class ConversationResponse(
 )
 
 data class MessageResponse(
-    @SerializedName("id") val id: Long,
+    @SerializedName("id") val id: String,
     @SerializedName("conversation_id") val conversationId: String,
     @SerializedName("role") val role: String,
     @SerializedName("content") val content: String,

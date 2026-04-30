@@ -40,7 +40,7 @@ enum class PlaybackState {
  * Current playback info for UI
  */
 data class PlaybackInfo(
-    val messageId: Long? = null,
+    val messageId: String? = null,
     val state: PlaybackState = PlaybackState.IDLE,
     val progress: Float = 0f,        // 0.0 - 1.0
     val currentPositionMs: Long = 0,
@@ -92,7 +92,7 @@ class ChatAudioPlaybackManager @Inject constructor(
     /**
      * Play audio for a message. If same message is already playing, toggle pause/resume.
      */
-    fun playOrToggle(messageId: Long) {
+    fun playOrToggle(messageId: String) {
         val currentInfo = _playbackInfo.value
 
         when {
@@ -116,7 +116,7 @@ class ChatAudioPlaybackManager @Inject constructor(
     /**
      * Load audio from cache or download, then play
      */
-    private fun loadAndPlay(messageId: Long) {
+    private fun loadAndPlay(messageId: String) {
         scope.launch {
             try {
                 _playbackInfo.value = PlaybackInfo(
@@ -166,7 +166,7 @@ class ChatAudioPlaybackManager @Inject constructor(
     /**
      * Play audio from file
      */
-    private fun playFile(messageId: Long, audioFile: File) {
+    private fun playFile(messageId: String, audioFile: File) {
         mainHandler.post {
             try {
                 val player = exoPlayer ?: ExoPlayer.Builder(context).build().also { exoPlayer = it }
@@ -338,7 +338,7 @@ class ChatAudioPlaybackManager @Inject constructor(
     /**
      * Get cached audio file path for a message
      */
-    private fun getCachedAudioFile(messageId: Long): File {
+    private fun getCachedAudioFile(messageId: String): File {
         return File(audioCacheDir, "msg_${messageId}.mp3")
     }
 

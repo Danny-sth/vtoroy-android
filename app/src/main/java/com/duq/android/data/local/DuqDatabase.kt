@@ -9,7 +9,7 @@ import com.duq.android.data.local.entities.MessageEntity
 
 @Database(
     entities = [ConversationEntity::class, MessageEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class DuqDatabase : RoomDatabase() {

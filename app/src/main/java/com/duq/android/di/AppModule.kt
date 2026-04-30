@@ -8,6 +8,7 @@ import com.duq.android.audio.AudioRecorder
 import com.duq.android.audio.AudioRecorderInterface
 import com.duq.android.audio.VoiceActivityDetector
 import com.duq.android.audio.VoiceActivityDetectorInterface
+import com.duq.android.auth.AccountTokenStorage
 import com.duq.android.auth.BiometricAuthManager
 import com.duq.android.auth.KeycloakAuthManager
 import com.duq.android.auth.KeycloakTokenRefresher
@@ -52,10 +53,19 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSettingsRepository(
+    fun provideAccountTokenStorage(
         @ApplicationContext context: Context
+    ): AccountTokenStorage {
+        return AccountTokenStorage(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSettingsRepository(
+        @ApplicationContext context: Context,
+        accountTokenStorage: AccountTokenStorage
     ): SettingsRepository {
-        return SettingsRepository(context)
+        return SettingsRepository(context, accountTokenStorage)
     }
 
     @Provides
@@ -124,6 +134,7 @@ object AppModule {
             "duq_database"
         )
             .addMigrations(*Migrations.ALL)
+            .fallbackToDestructiveMigration()
             .build()
     }
 

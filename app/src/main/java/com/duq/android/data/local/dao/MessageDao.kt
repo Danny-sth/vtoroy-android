@@ -17,7 +17,7 @@ interface MessageDao {
     suspend fun getMessagesForConversation(conversationId: String): List<MessageEntity>
 
     @Query("SELECT * FROM messages WHERE id = :messageId")
-    suspend fun getMessageById(messageId: Long): MessageEntity?
+    suspend fun getMessageById(messageId: String): MessageEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)

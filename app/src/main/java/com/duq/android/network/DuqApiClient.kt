@@ -624,7 +624,7 @@ class DuqApiClient(
      */
     override suspend fun downloadAudio(
         authToken: String,
-        messageId: Long
+        messageId: String
     ): Result<ByteArray> = withContext(Dispatchers.IO) {
         try {
             withRetry {

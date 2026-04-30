@@ -34,6 +34,6 @@ interface ConversationApiClient {
      */
     suspend fun downloadAudio(
         authToken: String,
-        messageId: Long
+        messageId: String
     ): Result<ByteArray>
 }

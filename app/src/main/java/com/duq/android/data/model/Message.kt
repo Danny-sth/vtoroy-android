@@ -6,7 +6,7 @@ import java.time.Instant
  * Message in a conversation
  */
 data class Message(
-    val id: Long,
+    val id: String,
     val conversationId: String,
     val role: MessageRole,
     val content: String,

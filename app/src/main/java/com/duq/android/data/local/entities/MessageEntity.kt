@@ -24,7 +24,7 @@ import java.time.Instant
 data class MessageEntity(
     @PrimaryKey
     @ColumnInfo(name = "id")
-    val id: Long,
+    val id: String,
 
     @ColumnInfo(name = "conversation_id")
     val conversationId: String,

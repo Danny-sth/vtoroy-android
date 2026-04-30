@@ -36,7 +36,7 @@ fun MessagesList(
     messages: List<Message>,
     isLoading: Boolean = false,
     audioPlaybackInfo: PlaybackInfo = PlaybackInfo(),
-    onAudioPlayPauseClick: (Long) -> Unit = {},
+    onAudioPlayPauseClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()

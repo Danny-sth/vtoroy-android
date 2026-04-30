@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.duq.android.auth.AccountTokenStorage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -19,26 +20,34 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 /**
  * Repository for app settings and authentication tokens.
- * Security: Tokens are stored in EncryptedSharedPreferences.
- * Non-sensitive settings use DataStore.
+ *
+ * Token storage strategy:
+ * - PRIMARY: AccountManager (survives app data clear / pm clear)
+ * - FALLBACK: EncryptedSharedPreferences (for non-critical data like device ID, Porcupine key)
+ *
+ * This ensures biometric login works even after app data is cleared.
  */
-class SettingsRepository(private val context: Context) {
+class SettingsRepository(
+    private val context: Context,
+    private val accountTokenStorage: AccountTokenStorage? = null
+) {
 
     companion object {
         private const val TAG = "SettingsRepository"
         private const val ENCRYPTED_PREFS_NAME = "duq_secure_prefs"
 
-        // Encrypted preferences keys (for tokens)
-        private const val KEY_ACCESS_TOKEN = "access_token"
-        private const val KEY_REFRESH_TOKEN = "refresh_token"
-        private const val KEY_ID_TOKEN = "id_token"
-        private const val KEY_TOKEN_EXPIRES_AT = "token_expires_at"
+        // EncryptedSharedPreferences keys (for non-token data only)
         private const val KEY_PORCUPINE_API_KEY = "porcupine_api_key"
         private const val KEY_DEVICE_ID = "device_id"
     }
 
+    // Lazy initialization of AccountTokenStorage if not injected
+    private val tokenStorage: AccountTokenStorage by lazy {
+        accountTokenStorage ?: AccountTokenStorage(context)
+    }
+
     private object PreferencesKeys {
-        // User info (DataStore - less sensitive)
+        // User info (DataStore - less sensitive, also backed by AccountManager)
         val USER_SUB = stringPreferencesKey("user_sub")
         val USER_EMAIL = stringPreferencesKey("user_email")
         val USER_NAME = stringPreferencesKey("user_name")
@@ -46,11 +55,9 @@ class SettingsRepository(private val context: Context) {
     }
 
     /**
-     * Encrypted SharedPreferences for secure token storage.
-     * Uses AES256 encryption with MasterKey from Android Keystore.
-     *
-     * SECURITY: NO FALLBACK to unencrypted storage. If encryption fails,
-     * we throw an exception rather than silently downgrade security.
+     * Encrypted SharedPreferences for secure storage of non-token data.
+     * Used for: Porcupine API key, Device ID
+     * NOTE: Tokens are stored in AccountManager, not here.
      */
     private val encryptedPrefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)
@@ -68,11 +75,10 @@ class SettingsRepository(private val context: Context) {
 
     /**
      * Flag indicating if encrypted storage is available.
-     * Use this to check before storing sensitive data.
      */
     val isEncryptionAvailable: Boolean by lazy {
         try {
-            encryptedPrefs // Access to trigger initialization
+            encryptedPrefs
             true
         } catch (e: Exception) {
             Log.e(TAG, "Encrypted storage unavailable: ${e.message}")
@@ -80,54 +86,70 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    // Access token flow (from encrypted storage)
+    // ========== TOKEN FLOWS (from AccountManager) ==========
+
     val accessToken: Flow<String> = flow {
-        emit(encryptedPrefs.getString(KEY_ACCESS_TOKEN, "") ?: "")
+        emit(tokenStorage.getAccessToken())
     }
 
-    // Refresh token flow (from encrypted storage)
     val refreshToken: Flow<String> = flow {
-        emit(encryptedPrefs.getString(KEY_REFRESH_TOKEN, "") ?: "")
+        emit(tokenStorage.getRefreshToken())
     }
 
-    // ID token flow (from encrypted storage)
     val idToken: Flow<String> = flow {
-        emit(encryptedPrefs.getString(KEY_ID_TOKEN, "") ?: "")
+        emit(tokenStorage.getIdToken())
     }
 
-    // Token expiration (from encrypted storage)
     val tokenExpiresAt: Flow<Long> = flow {
-        emit(encryptedPrefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L))
+        emit(tokenStorage.getExpiresAt())
     }
 
-    // User info
-    val userSub: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[PreferencesKeys.USER_SUB] ?: ""
-        }
+    // ========== USER INFO FLOWS ==========
 
-    val userEmail: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[PreferencesKeys.USER_EMAIL] ?: ""
+    // Primary source: AccountManager (survives pm clear)
+    // Fallback: DataStore (for backward compatibility)
+    val userSub: Flow<String> = flow {
+        val fromAccount = tokenStorage.getUserSub()
+        if (fromAccount.isNotBlank()) {
+            emit(fromAccount)
+        } else {
+            emit(context.dataStore.data.first()[PreferencesKeys.USER_SUB] ?: "")
         }
+    }
 
-    val userName: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[PreferencesKeys.USER_NAME] ?: ""
+    val userEmail: Flow<String> = flow {
+        val fromAccount = tokenStorage.getUserEmail()
+        if (fromAccount.isNotBlank()) {
+            emit(fromAccount)
+        } else {
+            emit(context.dataStore.data.first()[PreferencesKeys.USER_EMAIL] ?: "")
         }
+    }
 
-    val username: Flow<String> = context.dataStore.data
-        .map { preferences ->
-            preferences[PreferencesKeys.USERNAME] ?: ""
+    val userName: Flow<String> = flow {
+        val fromAccount = tokenStorage.getUserName()
+        if (fromAccount.isNotBlank()) {
+            emit(fromAccount)
+        } else {
+            emit(context.dataStore.data.first()[PreferencesKeys.USER_NAME] ?: "")
         }
+    }
 
-    // Porcupine API key flow (from encrypted storage)
+    val username: Flow<String> = flow {
+        val fromAccount = tokenStorage.getUsername()
+        if (fromAccount.isNotBlank()) {
+            emit(fromAccount)
+        } else {
+            emit(context.dataStore.data.first()[PreferencesKeys.USERNAME] ?: "")
+        }
+    }
+
+    // ========== OTHER SETTINGS ==========
+
     val porcupineApiKey: Flow<String> = flow {
         emit(encryptedPrefs.getString(KEY_PORCUPINE_API_KEY, "") ?: "")
     }
 
-    // Device ID for WebSocket connection (from encrypted storage)
-    // Auto-generates UUID if not exists
     val deviceId: Flow<String> = flow {
         var id = encryptedPrefs.getString(KEY_DEVICE_ID, "") ?: ""
         if (id.isEmpty()) {
@@ -138,98 +160,40 @@ class SettingsRepository(private val context: Context) {
     }
 
     val isAuthenticated: Flow<Boolean> = flow {
-        val token = encryptedPrefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
-        emit(token.isNotBlank())
+        emit(tokenStorage.isAuthenticated())
     }
 
     val hasValidSettings: Flow<Boolean> = flow {
-        val token = encryptedPrefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
-        // Only require authentication, Porcupine key is optional
-        emit(token.isNotBlank())
+        emit(tokenStorage.isAuthenticated())
     }
 
     // ========== SYNCHRONOUS METHODS (for OkHttp Interceptor) ==========
-    // These are safe to call from any thread as SharedPreferences is thread-safe
 
-    /**
-     * Get current access token synchronously.
-     * Thread-safe. Use in OkHttp interceptors.
-     */
-    fun getAccessTokenSync(): String {
-        return encryptedPrefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
+    fun getAccessTokenSync(): String = tokenStorage.getAccessToken()
+
+    fun getRefreshTokenSync(): String = tokenStorage.getRefreshToken()
+
+    fun getTokenExpiresAtSync(): Long = tokenStorage.getExpiresAt()
+
+    fun updateAccessTokenSync(accessToken: String, refreshToken: String?, expiresAt: Long) {
+        tokenStorage.updateAccessToken(accessToken, refreshToken, expiresAt)
     }
 
-    /**
-     * Get current refresh token synchronously.
-     * Thread-safe. Use in OkHttp interceptors.
-     */
-    fun getRefreshTokenSync(): String {
-        return encryptedPrefs.getString(KEY_REFRESH_TOKEN, "") ?: ""
-    }
+    // ========== SUSPEND METHODS ==========
+
+    suspend fun getAccessToken(): String = tokenStorage.getAccessToken()
+
+    suspend fun getRefreshToken(): String = tokenStorage.getRefreshToken()
+
+    suspend fun getIdToken(): String = tokenStorage.getIdToken()
+
+    suspend fun getTokenExpiresAt(): Long = tokenStorage.getExpiresAt()
+
+    suspend fun isTokenExpired(): Boolean = tokenStorage.isTokenExpired()
 
     /**
-     * Get token expiration time synchronously.
-     * Thread-safe. Use in OkHttp interceptors.
-     */
-    fun getTokenExpiresAtSync(): Long {
-        return encryptedPrefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L)
-    }
-
-    /**
-     * Update tokens synchronously.
-     * Thread-safe. Use in OkHttp interceptors.
-     */
-    fun updateAccessTokenSync(
-        accessToken: String,
-        refreshToken: String?,
-        expiresAt: Long
-    ) {
-        encryptedPrefs.edit()
-            .putString(KEY_ACCESS_TOKEN, accessToken)
-            .apply {
-                refreshToken?.let { putString(KEY_REFRESH_TOKEN, it) }
-            }
-            .putLong(KEY_TOKEN_EXPIRES_AT, expiresAt)
-            .apply()
-    }
-
-    // ========== SUSPEND METHODS (for coroutines) ==========
-
-    /**
-     * Get current access token (from encrypted storage)
-     */
-    suspend fun getAccessToken(): String = getAccessTokenSync()
-
-    /**
-     * Get current refresh token (from encrypted storage)
-     */
-    suspend fun getRefreshToken(): String = getRefreshTokenSync()
-
-    /**
-     * Get current ID token synchronously (from encrypted storage)
-     */
-    suspend fun getIdToken(): String {
-        return encryptedPrefs.getString(KEY_ID_TOKEN, "") ?: ""
-    }
-
-    /**
-     * Get token expiration time (from encrypted storage)
-     */
-    suspend fun getTokenExpiresAt(): Long {
-        return encryptedPrefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L)
-    }
-
-    /**
-     * Check if token is expired (with 60s buffer)
-     */
-    suspend fun isTokenExpired(): Boolean {
-        val expiresAt = getTokenExpiresAt()
-        return System.currentTimeMillis() >= (expiresAt - 60000)
-    }
-
-    /**
-     * Save Keycloak auth tokens (to encrypted storage)
-     * Security: Uses EncryptedSharedPreferences with AES256 encryption
+     * Save Keycloak auth tokens to AccountManager.
+     * These survive app data clear (pm clear).
      */
     suspend fun saveAuthTokens(
         accessToken: String,
@@ -237,42 +201,23 @@ class SettingsRepository(private val context: Context) {
         idToken: String?,
         expiresAt: Long
     ) {
-        encryptedPrefs.edit()
-            .putString(KEY_ACCESS_TOKEN, accessToken)
-            .apply {
-                refreshToken?.let { putString(KEY_REFRESH_TOKEN, it) }
-                idToken?.let { putString(KEY_ID_TOKEN, it) }
-            }
-            .putLong(KEY_TOKEN_EXPIRES_AT, expiresAt)
-            .apply()
+        tokenStorage.saveAuthTokens(accessToken, refreshToken, idToken, expiresAt)
+        Log.d(TAG, "Auth tokens saved to AccountManager")
+    }
+
+    suspend fun updateAccessToken(accessToken: String, refreshToken: String?, expiresAt: Long) {
+        tokenStorage.updateAccessToken(accessToken, refreshToken, expiresAt)
     }
 
     /**
-     * Update access token after refresh (to encrypted storage)
+     * Save user info to both AccountManager and DataStore.
+     * AccountManager is primary (survives pm clear), DataStore is backup.
      */
-    suspend fun updateAccessToken(
-        accessToken: String,
-        refreshToken: String?,
-        expiresAt: Long
-    ) {
-        encryptedPrefs.edit()
-            .putString(KEY_ACCESS_TOKEN, accessToken)
-            .apply {
-                refreshToken?.let { putString(KEY_REFRESH_TOKEN, it) }
-            }
-            .putLong(KEY_TOKEN_EXPIRES_AT, expiresAt)
-            .apply()
-    }
+    suspend fun saveUserInfo(sub: String, email: String, name: String, username: String) {
+        // Save to AccountManager (primary, survives pm clear)
+        tokenStorage.saveUserInfo(sub, email, name, username)
 
-    /**
-     * Save user info from Keycloak
-     */
-    suspend fun saveUserInfo(
-        sub: String,
-        email: String,
-        name: String,
-        username: String
-    ) {
+        // Also save to DataStore (backward compatibility)
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.USER_SUB] = sub
             preferences[PreferencesKeys.USER_EMAIL] = email
@@ -281,56 +226,35 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    /**
-     * Save Porcupine API key (to encrypted storage)
-     * Security: Uses EncryptedSharedPreferences with AES256 encryption
-     */
     suspend fun savePorcupineApiKey(apiKey: String) {
-        encryptedPrefs.edit()
-            .putString(KEY_PORCUPINE_API_KEY, apiKey)
-            .apply()
+        encryptedPrefs.edit().putString(KEY_PORCUPINE_API_KEY, apiKey).apply()
     }
 
-    /**
-     * Get Porcupine API key synchronously (from encrypted storage)
-     */
     suspend fun getPorcupineApiKey(): String {
         return encryptedPrefs.getString(KEY_PORCUPINE_API_KEY, "") ?: ""
     }
 
-    /**
-     * Clear tokens synchronously (for use in interceptors)
-     * Use clearAuth() for full logout including DataStore
-     */
     fun clearTokensSync() {
-        encryptedPrefs.edit()
-            .remove(KEY_ACCESS_TOKEN)
-            .remove(KEY_REFRESH_TOKEN)
-            .remove(KEY_ID_TOKEN)
-            .remove(KEY_TOKEN_EXPIRES_AT)
-            .apply()
-        Log.d("SettingsRepository", "Tokens cleared synchronously")
+        tokenStorage.clearTokens()
+        Log.d(TAG, "Tokens cleared from AccountManager")
     }
 
     /**
-     * Clear all auth data (logout)
-     * Clears both encrypted token storage and user info from DataStore
+     * Clear all auth data (logout).
+     * Clears AccountManager tokens and DataStore user info.
      */
     suspend fun clearAuth() {
-        // Clear encrypted tokens
-        encryptedPrefs.edit()
-            .remove(KEY_ACCESS_TOKEN)
-            .remove(KEY_REFRESH_TOKEN)
-            .remove(KEY_ID_TOKEN)
-            .remove(KEY_TOKEN_EXPIRES_AT)
-            .apply()
+        // Clear from AccountManager
+        tokenStorage.clearTokens()
 
-        // Clear user info from DataStore
+        // Clear from DataStore
         context.dataStore.edit { preferences ->
             preferences.remove(PreferencesKeys.USER_SUB)
             preferences.remove(PreferencesKeys.USER_EMAIL)
             preferences.remove(PreferencesKeys.USER_NAME)
             preferences.remove(PreferencesKeys.USERNAME)
         }
+
+        Log.d(TAG, "Auth cleared from AccountManager and DataStore")
     }
 }

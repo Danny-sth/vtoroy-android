@@ -197,7 +197,7 @@ class ConversationRepository @Inject constructor(
 
     /**
      * Insert a local message for optimistic UI update.
-     * Uses negative ID to avoid conflicts with server-generated IDs.
+     * Uses temp- prefix UUID to avoid conflicts with server-generated IDs.
      * The message will be replaced when refreshMessages() fetches the real one.
      */
     suspend fun insertLocalMessage(
@@ -205,7 +205,7 @@ class ConversationRepository @Inject constructor(
         content: String,
         role: String = "user"
     ) {
-        val tempId = -System.currentTimeMillis() // Negative ID to avoid conflicts
+        val tempId = "temp-${java.util.UUID.randomUUID()}" // Temp ID to avoid conflicts
         val entity = MessageEntity(
             id = tempId,
             conversationId = conversationId,
@@ -225,7 +225,7 @@ class ConversationRepository @Inject constructor(
      */
     suspend fun downloadAndCacheAudio(
         authToken: String,
-        messageId: Long
+        messageId: String
     ): Result<ByteArray> {
         return try {
             apiClient.downloadAudio(authToken, messageId)
