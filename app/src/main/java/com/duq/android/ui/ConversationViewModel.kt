@@ -69,6 +69,43 @@ class ConversationViewModel @Inject constructor(
 
     init {
         loadConversationsAndMessages()
+        startWebSocketListener()
+    }
+
+    /**
+     * Start background WebSocket listener for real-time sync.
+     * Processes ALL incoming messages (from Telegram, MCP, etc.)
+     * and updates the conversation UI.
+     */
+    private fun startWebSocketListener() {
+        viewModelScope.launch {
+            webSocketClient.messages.collect { message ->
+                Log.d(TAG, "🔔 WebSocket message received: type=${message.type}, taskId=${message.taskId}")
+
+                // Only process response/notification messages
+                if (message.type != "response" && message.type != "notification") {
+                    return@collect
+                }
+
+                // Get current conversation ID
+                val conversationId = _currentConversationId.value ?: return@collect
+
+                // Insert assistant message to local Room DB
+                // Flow will automatically update UI
+                val text = message.text ?: return@collect
+                if (text.isNotBlank()) {
+                    Log.d(TAG, "📥 Adding WebSocket message to conversation: ${text.take(50)}...")
+
+                    conversationRepository.insertLocalMessage(
+                        conversationId = conversationId,
+                        content = text,
+                        role = "assistant"
+                    )
+
+                    Log.d(TAG, "✅ Real-time sync: assistant message added to UI")
+                }
+            }
+        }
     }
 
     /**
