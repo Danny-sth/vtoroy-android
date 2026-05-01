@@ -77,6 +77,7 @@ class DuqWebSocketClient @Inject constructor(
 
     private val client by lazy {
         OkHttpClient.Builder()
+            .dns(FallbackDns.create())
             .readTimeout(0, TimeUnit.MILLISECONDS)  // No timeout for WebSocket
             .pingInterval(30, TimeUnit.SECONDS)     // Keep-alive pings
             .build()
@@ -295,6 +296,7 @@ class DuqWebSocketClient @Inject constructor(
                 .build()
 
             val refreshClient = OkHttpClient.Builder()
+                .dns(FallbackDns.create())
                 .connectTimeout(AppConfig.AUTH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .readTimeout(AppConfig.AUTH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 .build()

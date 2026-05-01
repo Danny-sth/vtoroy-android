@@ -37,6 +37,7 @@ class DuqApiClient(
 
     private val client by lazy {
         OkHttpClient.Builder()
+            .dns(FallbackDns.create())
             .connectTimeout(AppConfig.CONNECT_TIMEOUT_S, TimeUnit.SECONDS)
             .readTimeout(AppConfig.READ_TIMEOUT_S, TimeUnit.SECONDS)
             .writeTimeout(AppConfig.WRITE_TIMEOUT_S, TimeUnit.SECONDS)
