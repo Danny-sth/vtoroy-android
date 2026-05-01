@@ -157,20 +157,33 @@ class ConversationRepository @Inject constructor(
     }
 
     /**
-     * Refresh messages from API (pull-on-focus strategy)
+     * Refresh messages from API.
+     * Uses smart sync: inserts new messages, keeps existing ones.
+     * API returns latest N messages; we merge with local to build full history.
      */
     suspend fun refreshMessages(authToken: String, conversationId: String) {
         try {
             val apiResult = apiClient.getMessages(authToken, conversationId, DEFAULT_MESSAGES_LIMIT)
             if (apiResult.isSuccess) {
                 val messages = apiResult.getOrNull() ?: emptyList()
-                messageDao.insertMessages(messages.map { it.toEntity() })
-                Log.d(TAG, "✅ Refreshed ${messages.size} messages")
+                Log.d(TAG, "📥 Got ${messages.size} messages from API")
+
+                val voiceCount = messages.count { it.hasAudio }
+                if (voiceCount > 0) {
+                    Log.d(TAG, "🎤 Voice messages count: $voiceCount")
+                }
+
+                val entities = messages.map { it.toEntity() }
+
+                // UPSERT: OnConflictStrategy.REPLACE will update existing, add new
+                // This preserves any messages not returned by API (older than limit)
+                messageDao.insertMessages(entities)
+                Log.d(TAG, "✅ Synced ${entities.size} messages")
             } else {
-                Log.e(TAG, "Failed to refresh messages")
+                Log.e(TAG, "Failed to refresh messages: ${apiResult.exceptionOrNull()?.message}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error refreshing messages: ${e.message}")
+            Log.e(TAG, "Error refreshing messages: ${e.message}", e)
         }
     }
 
