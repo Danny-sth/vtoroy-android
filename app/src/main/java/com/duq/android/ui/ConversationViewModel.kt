@@ -300,12 +300,20 @@ class ConversationViewModel @Inject constructor(
 
                 Log.d(TAG, "📤 Sending text message: ${message.take(50)}...")
 
-                // Optimistic update: show user message immediately
+                // Get current conversation
                 val conversationId = _currentConversationId.value
-                if (conversationId != null) {
-                    conversationRepository.insertLocalMessage(conversationId, message, "user")
-                    Log.d(TAG, "✅ Optimistic update: user message added to UI")
+                if (conversationId == null) {
+                    Log.w(TAG, "No current conversation")
+                    _error.value = DuqError.NetworkError("No active conversation")
+                    return@launch
                 }
+
+                // Optimistic update: insert to Room immediately
+                conversationRepository.insertLocalMessage(
+                    conversationId = conversationId,
+                    content = message,
+                    role = "user"
+                )
 
                 // Ensure WebSocket is connected
                 if (!webSocketClient.isConnected()) {

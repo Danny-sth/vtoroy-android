@@ -28,9 +28,6 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteMessagesForConversation(conversationId: String)
 
-    @Query("DELETE FROM messages WHERE conversation_id = :conversationId AND id LIKE 'temp-%'")
-    suspend fun deleteTempMessages(conversationId: String): Int
-
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
 }

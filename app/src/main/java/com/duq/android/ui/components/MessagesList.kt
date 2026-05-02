@@ -27,7 +27,7 @@ import com.duq.android.ui.theme.DuqColors
 
 /**
  * List of chat messages with audio playback support.
- * No loading spinners - uses optimistic updates and skeleton loaders.
+ * No loading spinners - uses optimistic updates from Room.
  *
  * @param messages List of messages to display
  * @param audioPlaybackInfo Current audio playback info (which message is playing, progress, etc.)
