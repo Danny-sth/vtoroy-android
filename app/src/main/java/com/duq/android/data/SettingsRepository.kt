@@ -11,9 +11,11 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.duq.android.auth.AccountTokenStorage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "duq_settings")
@@ -95,24 +97,26 @@ class SettingsRepository(
     }
 
     // ========== TOKEN FLOWS (from AccountManager) ==========
+    // All token flows use flowOn(Dispatchers.IO) to prevent blocking Main thread
 
     val accessToken: Flow<String> = flow {
         emit(tokenStorage.getAccessToken())
-    }
+    }.flowOn(Dispatchers.IO)
 
     val refreshToken: Flow<String> = flow {
         emit(tokenStorage.getRefreshToken())
-    }
+    }.flowOn(Dispatchers.IO)
 
     val idToken: Flow<String> = flow {
         emit(tokenStorage.getIdToken())
-    }
+    }.flowOn(Dispatchers.IO)
 
     val tokenExpiresAt: Flow<Long> = flow {
         emit(tokenStorage.getExpiresAt())
-    }
+    }.flowOn(Dispatchers.IO)
 
     // ========== USER INFO FLOWS ==========
+    // All user info flows use flowOn(Dispatchers.IO) to prevent blocking Main thread
 
     // Primary source: AccountManager (survives pm clear)
     // Fallback: DataStore (for backward compatibility)
@@ -123,7 +127,7 @@ class SettingsRepository(
         } else {
             emit(context.dataStore.data.first()[PreferencesKeys.USER_SUB] ?: "")
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     val userEmail: Flow<String> = flow {
         val fromAccount = tokenStorage.getUserEmail()
@@ -132,7 +136,7 @@ class SettingsRepository(
         } else {
             emit(context.dataStore.data.first()[PreferencesKeys.USER_EMAIL] ?: "")
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     val userName: Flow<String> = flow {
         val fromAccount = tokenStorage.getUserName()
@@ -141,7 +145,7 @@ class SettingsRepository(
         } else {
             emit(context.dataStore.data.first()[PreferencesKeys.USER_NAME] ?: "")
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     val username: Flow<String> = flow {
         val fromAccount = tokenStorage.getUsername()
@@ -150,13 +154,13 @@ class SettingsRepository(
         } else {
             emit(context.dataStore.data.first()[PreferencesKeys.USERNAME] ?: "")
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     // ========== OTHER SETTINGS ==========
 
     val porcupineApiKey: Flow<String> = flow {
         emit(encryptedPrefs.getString(KEY_PORCUPINE_API_KEY, "") ?: "")
-    }
+    }.flowOn(Dispatchers.IO)
 
     val deviceId: Flow<String> = flow {
         var id = encryptedPrefs.getString(KEY_DEVICE_ID, "") ?: ""
@@ -165,25 +169,25 @@ class SettingsRepository(
             encryptedPrefs.edit().putString(KEY_DEVICE_ID, id).apply()
         }
         emit(id)
-    }
+    }.flowOn(Dispatchers.IO)
 
     val isAuthenticated: Flow<Boolean> = flow {
         emit(tokenStorage.isAuthenticated())
-    }
+    }.flowOn(Dispatchers.IO)
 
     val hasValidSettings: Flow<Boolean> = flow {
         emit(tokenStorage.isAuthenticated())
-    }
+    }.flowOn(Dispatchers.IO)
 
     // ========== USER-CONFIGURABLE SETTINGS ==========
 
     val wakeWordSensitivity: Flow<Float> = flow {
         emit(encryptedPrefs.getFloat(KEY_WAKE_WORD_SENSITIVITY, DEFAULT_WAKE_WORD_SENSITIVITY))
-    }
+    }.flowOn(Dispatchers.IO)
 
     val silenceTimeoutMs: Flow<Long> = flow {
         emit(encryptedPrefs.getLong(KEY_SILENCE_TIMEOUT_MS, DEFAULT_SILENCE_TIMEOUT_MS))
-    }
+    }.flowOn(Dispatchers.IO)
 
     fun getWakeWordSensitivitySync(): Float =
         encryptedPrefs.getFloat(KEY_WAKE_WORD_SENSITIVITY, DEFAULT_WAKE_WORD_SENSITIVITY)

@@ -15,6 +15,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -63,10 +65,24 @@ class ChatAudioPlaybackManager @Inject constructor(
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Use volatile for thread-safe access from multiple threads
+    @Volatile
     private var exoPlayer: ExoPlayer? = null
+
+    @Volatile
     private var currentListener: Player.Listener? = null
+
     private var progressJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.Main)
+
+    // SupervisorJob ensures child coroutines don't cancel the parent on failure
+    // This scope is tied to application lifecycle (singleton)
+    private val supervisorJob = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.Main + supervisorJob)
+
+    // Track if manager is released to prevent use-after-release
+    @Volatile
+    private var isReleased = false
 
     // Audio file cache directory
     private val audioCacheDir: File by lazy {
@@ -81,8 +97,12 @@ class ChatAudioPlaybackManager @Inject constructor(
      * Initialize the player (call on app start)
      */
     fun initialize() {
+        if (isReleased) {
+            Log.w(TAG, "Cannot initialize - manager is released")
+            return
+        }
         mainHandler.post {
-            if (exoPlayer == null) {
+            if (exoPlayer == null && !isReleased) {
                 exoPlayer = ExoPlayer.Builder(context).build()
                 Log.d(TAG, "ExoPlayer initialized")
             }
@@ -167,9 +187,18 @@ class ChatAudioPlaybackManager @Inject constructor(
      * Play audio from file
      */
     private fun playFile(messageId: String, audioFile: File) {
+        if (isReleased) {
+            Log.w(TAG, "Cannot play - manager is released")
+            return
+        }
         mainHandler.post {
+            if (isReleased) return@post
             try {
-                val player = exoPlayer ?: ExoPlayer.Builder(context).build().also { exoPlayer = it }
+                // Don't create new player if released or if player already exists
+                val player = exoPlayer ?: run {
+                    if (isReleased) return@post
+                    ExoPlayer.Builder(context).build().also { exoPlayer = it }
+                }
 
                 // Remove previous listener
                 currentListener?.let { player.removeListener(it) }
@@ -286,15 +315,30 @@ class ChatAudioPlaybackManager @Inject constructor(
 
     /**
      * Release resources (call on app destroy)
+     * Thread-safe: can be called from any thread
      */
     fun release() {
+        if (isReleased) return
+        isReleased = true
+
+        // Cancel all coroutines first
+        supervisorJob.cancel()
         stopProgressUpdates()
+
+        // Release player on main thread
         mainHandler.post {
-            currentListener?.let { exoPlayer?.removeListener(it) }
-            currentListener = null
-            exoPlayer?.release()
-            exoPlayer = null
-            Log.d(TAG, "ExoPlayer released")
+            try {
+                currentListener?.let { listener ->
+                    exoPlayer?.removeListener(listener)
+                }
+                currentListener = null
+                exoPlayer?.release()
+                exoPlayer = null
+                _playbackInfo.value = PlaybackInfo()
+                Log.d(TAG, "ExoPlayer released")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error releasing player: ${e.message}", e)
+            }
         }
     }
 

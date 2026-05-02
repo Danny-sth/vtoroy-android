@@ -1,5 +1,6 @@
 package com.duq.android.data
 
+import android.database.sqlite.SQLiteConstraintException
 import android.util.Log
 import com.duq.android.data.local.dao.ConversationDao
 import com.duq.android.data.local.dao.MessageDao
@@ -26,6 +27,8 @@ class ConversationRepository @Inject constructor(
     companion object {
         private const val TAG = "ConversationRepository"
         private const val DEFAULT_MESSAGES_LIMIT = 50
+        // Placeholder waveform for voice messages without actual waveform data
+        private const val PLACEHOLDER_WAVEFORM = "[0.3,0.5,0.7,0.4,0.6,0.8,0.5,0.3,0.6,0.7,0.5,0.4,0.6,0.8,0.5,0.3]"
     }
 
     /**
@@ -216,6 +219,9 @@ class ConversationRepository @Inject constructor(
      * Insert a local message for optimistic UI update.
      * Uses temp- prefix UUID to avoid conflicts with server-generated IDs.
      * The message will be replaced when refreshMessages() fetches the real one.
+     *
+     * Handles FK constraint violations gracefully - if conversation was deleted
+     * between check and insert, logs error and returns false.
      */
     suspend fun insertLocalMessage(
         conversationId: String,
@@ -225,40 +231,43 @@ class ConversationRepository @Inject constructor(
         waveform: List<Float>? = null,
         audioDurationMs: Int? = null
     ): Boolean {
+        // Pre-check: verify conversation exists (fast-fail for obvious errors)
+        val conversationExists = conversationDao.getConversationById(conversationId) != null
+        if (!conversationExists) {
+            Log.e(TAG, "❌ CANNOT insert message - conversation $conversationId NOT in local DB!")
+            Log.e(TAG, "❌ This is a Foreign Key constraint issue. Conversation must be cached first.")
+            return false
+        }
+
+        // Use real waveform if provided, otherwise generate placeholder for voice messages
+        val waveformJson = when {
+            waveform != null && waveform.isNotEmpty() -> {
+                com.google.gson.Gson().toJson(waveform)
+            }
+            hasAudio -> PLACEHOLDER_WAVEFORM
+            else -> null
+        }
+
+        val tempId = "temp-${java.util.UUID.randomUUID()}" // Temp ID to avoid conflicts
+        val entity = MessageEntity(
+            id = tempId,
+            conversationId = conversationId,
+            role = role,
+            content = content,
+            hasAudio = hasAudio,
+            audioDurationMs = audioDurationMs ?: if (hasAudio) 1000 else null,
+            waveform = waveformJson,
+            createdAt = System.currentTimeMillis() / 1000
+        )
+
         return try {
-            // CRITICAL: Check if conversation exists in DB (FK constraint)
-            val conversationExists = conversationDao.getConversationById(conversationId) != null
-            if (!conversationExists) {
-                Log.e(TAG, "❌ CANNOT insert message - conversation $conversationId NOT in local DB!")
-                Log.e(TAG, "❌ This is a Foreign Key constraint issue. Conversation must be cached first.")
-                return false
-            }
-
-            // Use real waveform if provided, otherwise generate placeholder for voice messages
-            val waveformJson = when {
-                waveform != null && waveform.isNotEmpty() -> {
-                    com.google.gson.Gson().toJson(waveform)
-                }
-                hasAudio -> {
-                    "[0.3,0.5,0.7,0.4,0.6,0.8,0.5,0.3,0.6,0.7,0.5,0.4,0.6,0.8,0.5,0.3]"
-                }
-                else -> null
-            }
-
-            val tempId = "temp-${java.util.UUID.randomUUID()}" // Temp ID to avoid conflicts
-            val entity = MessageEntity(
-                id = tempId,
-                conversationId = conversationId,
-                role = role,
-                content = content,
-                hasAudio = hasAudio,
-                audioDurationMs = audioDurationMs ?: if (hasAudio) 1000 else null,
-                waveform = waveformJson,
-                createdAt = System.currentTimeMillis() / 1000
-            )
             messageDao.insertMessage(entity)
             Log.d(TAG, "✅ Inserted local message with temp id: $tempId, hasAudio=$hasAudio, waveform=${waveform?.size ?: 0} points")
             true
+        } catch (e: SQLiteConstraintException) {
+            // FK constraint violation - conversation was deleted between check and insert
+            Log.e(TAG, "❌ FK constraint violation: conversation $conversationId was deleted during insert", e)
+            false
         } catch (e: Exception) {
             Log.e(TAG, "❌ FAILED to insert local message: ${e.message}", e)
             false
@@ -268,6 +277,8 @@ class ConversationRepository @Inject constructor(
     /**
      * Insert a local message with a specific ID (for WebSocket messages with cached audio).
      * The ID must match the cached audio file ID.
+     *
+     * Handles FK constraint violations gracefully.
      */
     suspend fun insertLocalMessageWithId(
         messageId: String,
@@ -278,36 +289,39 @@ class ConversationRepository @Inject constructor(
         waveform: List<Float>? = null,
         audioDurationMs: Int? = null
     ): Boolean {
+        // Pre-check: verify conversation exists
+        val conversationExists = conversationDao.getConversationById(conversationId) != null
+        if (!conversationExists) {
+            Log.e(TAG, "❌ CANNOT insert message - conversation $conversationId NOT in local DB!")
+            return false
+        }
+
+        val waveformJson = when {
+            waveform != null && waveform.isNotEmpty() -> {
+                com.google.gson.Gson().toJson(waveform)
+            }
+            hasAudio -> PLACEHOLDER_WAVEFORM
+            else -> null
+        }
+
+        val entity = MessageEntity(
+            id = messageId,
+            conversationId = conversationId,
+            role = role,
+            content = content,
+            hasAudio = hasAudio,
+            audioDurationMs = audioDurationMs ?: if (hasAudio) 1000 else null,
+            waveform = waveformJson,
+            createdAt = System.currentTimeMillis() / 1000
+        )
+
         return try {
-            val conversationExists = conversationDao.getConversationById(conversationId) != null
-            if (!conversationExists) {
-                Log.e(TAG, "❌ CANNOT insert message - conversation $conversationId NOT in local DB!")
-                return false
-            }
-
-            val waveformJson = when {
-                waveform != null && waveform.isNotEmpty() -> {
-                    com.google.gson.Gson().toJson(waveform)
-                }
-                hasAudio -> {
-                    "[0.3,0.5,0.7,0.4,0.6,0.8,0.5,0.3,0.6,0.7,0.5,0.4,0.6,0.8,0.5,0.3]"
-                }
-                else -> null
-            }
-
-            val entity = MessageEntity(
-                id = messageId,
-                conversationId = conversationId,
-                role = role,
-                content = content,
-                hasAudio = hasAudio,
-                audioDurationMs = audioDurationMs ?: if (hasAudio) 1000 else null,
-                waveform = waveformJson,
-                createdAt = System.currentTimeMillis() / 1000
-            )
             messageDao.insertMessage(entity)
             Log.d(TAG, "✅ Inserted local message with id: $messageId, hasAudio=$hasAudio")
             true
+        } catch (e: SQLiteConstraintException) {
+            Log.e(TAG, "❌ FK constraint violation: conversation $conversationId was deleted during insert", e)
+            false
         } catch (e: Exception) {
             Log.e(TAG, "❌ FAILED to insert local message: ${e.message}", e)
             false

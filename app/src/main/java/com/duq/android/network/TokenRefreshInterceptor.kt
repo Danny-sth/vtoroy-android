@@ -13,6 +13,7 @@ import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -42,9 +43,12 @@ class TokenRefreshInterceptor @Inject constructor(
     // Prevent multiple concurrent token refreshes
     private val isRefreshing = AtomicBoolean(false)
 
-    // Latch for waiting threads - recreated on each refresh cycle
-    @Volatile
-    private var refreshLatch: CountDownLatch? = null
+    // Latch for waiting threads - AtomicReference prevents race conditions
+    // where one thread reads stale latch while another creates new one
+    private val refreshLatchRef = AtomicReference<CountDownLatch?>(null)
+
+    // Track if proactive refresh was just performed to skip reactive refresh
+    private val proactiveRefreshTimestamp = AtomicReference<Long>(0L)
 
     // Dedicated client for token refresh (no interceptors to avoid recursion)
     private val refreshClient by lazy {
@@ -74,23 +78,36 @@ class TokenRefreshInterceptor @Inject constructor(
             return response
         }
 
+        // Skip reactive refresh if proactive refresh just happened (within 5 seconds)
+        // This prevents double refresh when token is revoked server-side immediately after refresh
+        val lastProactiveRefresh = proactiveRefreshTimestamp.get()
+        val timeSinceProactive = System.currentTimeMillis() - lastProactiveRefresh
+        if (timeSinceProactive < 5000L && lastProactiveRefresh > 0L) {
+            Log.w(TAG, "Received 401 right after proactive refresh (${timeSinceProactive}ms ago), token likely revoked")
+            settingsRepository.clearTokensSync()
+            return response // Don't retry, force re-auth
+        }
+
         Log.d(TAG, "Received 401, attempting token refresh")
 
         // Check if another thread is already refreshing
         if (isRefreshing.compareAndSet(false, true)) {
-            // We're the first - create a new latch and start refresh
-            refreshLatch = CountDownLatch(1)
+            // We're the first - create a new latch atomically
+            val newLatch = CountDownLatch(1)
+            refreshLatchRef.set(newLatch)
 
             try {
                 return performRefreshAndRetry(chain, originalRequest, response)
             } finally {
                 isRefreshing.set(false)
-                refreshLatch?.countDown()
+                newLatch.countDown()
+                // Clear latch reference after countdown to allow GC
+                refreshLatchRef.compareAndSet(newLatch, null)
             }
         } else {
-            // Another thread is refreshing - wait for it to finish
+            // Another thread is refreshing - get latch atomically and wait
             Log.d(TAG, "Token refresh already in progress, waiting...")
-            val latch = refreshLatch
+            val latch = refreshLatchRef.get()
 
             if (latch != null) {
                 val completed = latch.await(REFRESH_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -122,7 +139,8 @@ class TokenRefreshInterceptor @Inject constructor(
 
             // Try to acquire refresh lock
             if (isRefreshing.compareAndSet(false, true)) {
-                refreshLatch = CountDownLatch(1)
+                val newLatch = CountDownLatch(1)
+                refreshLatchRef.set(newLatch)
                 try {
                     val refreshToken = settingsRepository.getRefreshTokenSync()
                     if (refreshToken.isNotBlank()) {
@@ -134,18 +152,21 @@ class TokenRefreshInterceptor @Inject constructor(
                                 refreshToken = refreshResult.newRefreshToken,
                                 expiresAt = refreshResult.expiresAt
                             )
+                            // Record timestamp to skip reactive refresh
+                            proactiveRefreshTimestamp.set(System.currentTimeMillis())
                         } else {
                             Log.w(TAG, "Proactive token refresh failed: ${refreshResult.error}")
                         }
                     }
                 } finally {
                     isRefreshing.set(false)
-                    refreshLatch?.countDown()
+                    newLatch.countDown()
+                    refreshLatchRef.compareAndSet(newLatch, null)
                 }
             } else {
-                // Another thread is refreshing, wait for it
+                // Another thread is refreshing, wait for it atomically
                 Log.d(TAG, "Waiting for ongoing token refresh...")
-                refreshLatch?.await(REFRESH_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                refreshLatchRef.get()?.await(REFRESH_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             }
         }
 

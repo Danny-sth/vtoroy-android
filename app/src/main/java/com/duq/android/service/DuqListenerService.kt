@@ -48,7 +48,10 @@ class DuqListenerService : Service(), VoiceServiceController {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // Volatile for thread-safe access from service and processor threads
+    @Volatile
     private var wakeWordManager: WakeWordManager? = null
+    @Volatile
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile
     private var isWakeWordInitialized = false

@@ -183,9 +183,21 @@ class DuqWebSocketClient @Inject constructor(
                     try {
                         val message = gson.fromJson(text, WSMessage::class.java)
 
-                        // Handle ping/pong internally
+                        // Null-safety: GSON can return object with null fields
+                        if (message == null) {
+                            Log.w(TAG, "Failed to parse WebSocket message: null result")
+                            return
+                        }
+
+                        // Handle ping/pong internally (null-safe check)
                         if (message.type == "pong") {
                             Log.d(TAG, "Received pong")
+                            return
+                        }
+
+                        // Skip messages with missing type (malformed)
+                        if (message.type.isNullOrBlank()) {
+                            Log.w(TAG, "Skipping WebSocket message with missing type")
                             return
                         }
 
