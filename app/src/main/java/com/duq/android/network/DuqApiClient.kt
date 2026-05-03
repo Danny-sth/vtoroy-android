@@ -263,7 +263,18 @@ class DuqApiClient(
         }
 
         val responseBody = response.body?.string() ?: ""
-        val messageResponse = gson.fromJson(responseBody, MessageApiResponse::class.java)
+        val messageResponse = try {
+            gson.fromJson(responseBody, MessageApiResponse::class.java)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to parse response: ${e.message}")
+            return ApiResult.Error("Invalid response format")
+        }
+
+        // Null-safety: GSON returns null if parsing fails
+        if (messageResponse == null) {
+            Log.e(TAG, "❌ Failed to parse response: null result")
+            return ApiResult.Error("Invalid response format")
+        }
 
         if (messageResponse.error != null) {
             Log.e(TAG, "❌ Queue error: ${messageResponse.error}")

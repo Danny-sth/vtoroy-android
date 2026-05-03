@@ -97,7 +97,7 @@ class ConversationViewModel @Inject constructor(
                 // Flow will automatically update UI
                 val text = message.text ?: return@collect
                 if (text.isNotBlank()) {
-                    val hasVoice = !message.voiceData.isNullOrEmpty()
+                    val hasVoice = !message.voiceData.isNullOrBlank()
                     Log.d(TAG, "📥 Adding WebSocket message: ${text.take(50)}..., hasVoice=$hasVoice, waveform=${message.waveform?.size ?: 0} points")
 
                     // Generate temp message ID for this message
