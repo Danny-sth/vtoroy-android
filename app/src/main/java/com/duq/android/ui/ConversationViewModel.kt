@@ -85,48 +85,98 @@ class ConversationViewModel @Inject constructor(
             webSocketClient.messages.collect { message ->
                 Log.d(TAG, "🔔 WebSocket message received: type=${message.type}, taskId=${message.taskId}")
 
-                // Only process response/notification messages
-                if (message.type != "response" && message.type != "notification") {
-                    return@collect
-                }
-
-                // Get current conversation ID
-                val conversationId = _currentConversationId.value ?: return@collect
-
-                // Insert assistant message to local Room DB
-                // Flow will automatically update UI
-                val text = message.text ?: return@collect
-                if (text.isNotBlank()) {
-                    val hasVoice = !message.voiceData.isNullOrBlank()
-                    Log.d(TAG, "📥 Adding WebSocket message: ${text.take(50)}..., hasVoice=$hasVoice, waveform=${message.waveform?.size ?: 0} points")
-
-                    // Generate temp message ID for this message
-                    val tempMessageId = "temp-${java.util.UUID.randomUUID()}"
-
-                    // Save audio to cache if present (for offline playback)
-                    if (hasVoice && message.voiceData != null) {
-                        try {
-                            val audioBytes = Base64.decode(message.voiceData, Base64.DEFAULT)
-                            audioPlaybackManager.saveToCache(tempMessageId, audioBytes)
-                            Log.d(TAG, "🎵 Cached WebSocket audio: ${audioBytes.size} bytes")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to cache audio: ${e.message}")
-                        }
+                when (message.type) {
+                    "new_message" -> {
+                        // Real-time sync from PostgreSQL LISTEN/NOTIFY
+                        handleNewMessageSync(message)
                     }
-
-                    conversationRepository.insertLocalMessageWithId(
-                        messageId = tempMessageId,
-                        conversationId = conversationId,
-                        content = text,
-                        role = "assistant",
-                        hasAudio = hasVoice,
-                        waveform = message.waveform,
-                        audioDurationMs = message.audioDurationMs
-                    )
-
-                    Log.d(TAG, "✅ Real-time sync: assistant message added to UI")
+                    "response", "notification" -> {
+                        // Legacy response handling (direct task responses)
+                        handleLegacyResponse(message)
+                    }
+                    else -> {
+                        Log.d(TAG, "Ignoring message type: ${message.type}")
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Handle real-time message sync from PostgreSQL LISTEN/NOTIFY.
+     * Triggered when any message is added to the database (from Telegram, MCP, etc.)
+     */
+    private suspend fun handleNewMessageSync(message: DuqWebSocketClient.WSMessage) {
+        val msgConversationId = message.conversationId ?: return
+        val currentConvId = _currentConversationId.value
+
+        Log.d(TAG, "📬 new_message: conv=${msgConversationId.take(8)}, role=${message.role}, current=${currentConvId?.take(8)}")
+
+        if (msgConversationId == currentConvId) {
+            // Same conversation - insert message directly to Room DB
+            val content = message.content ?: return
+            val role = message.role ?: return
+            val messageId = message.messageId ?: "sync-${java.util.UUID.randomUUID()}"
+
+            Log.d(TAG, "📥 Inserting synced message: role=$role, ${content.take(50)}...")
+
+            conversationRepository.insertLocalMessageWithId(
+                messageId = messageId,
+                conversationId = msgConversationId,
+                content = content,
+                role = role,
+                hasAudio = false,
+                waveform = null,
+                audioDurationMs = null
+            )
+
+            Log.d(TAG, "✅ Real-time sync: $role message added to UI")
+        } else {
+            // Different conversation - just log, don't auto-refresh to avoid UI spam
+            // User will see updates when they manually refresh or switch conversations
+            Log.d(TAG, "📝 Message in different conversation (${msgConversationId.take(8)}), skipping UI update")
+        }
+    }
+
+    /**
+     * Handle legacy response/notification messages (direct task responses).
+     */
+    private suspend fun handleLegacyResponse(message: DuqWebSocketClient.WSMessage) {
+        // Get current conversation ID
+        val conversationId = _currentConversationId.value ?: return
+
+        // Insert assistant message to local Room DB
+        // Flow will automatically update UI
+        val text = message.text ?: return
+        if (text.isNotBlank()) {
+            val hasVoice = !message.voiceData.isNullOrBlank()
+            Log.d(TAG, "📥 Adding WebSocket message: ${text.take(50)}..., hasVoice=$hasVoice, waveform=${message.waveform?.size ?: 0} points")
+
+            // Generate temp message ID for this message
+            val tempMessageId = "temp-${java.util.UUID.randomUUID()}"
+
+            // Save audio to cache if present (for offline playback)
+            if (hasVoice && message.voiceData != null) {
+                try {
+                    val audioBytes = Base64.decode(message.voiceData, Base64.DEFAULT)
+                    audioPlaybackManager.saveToCache(tempMessageId, audioBytes)
+                    Log.d(TAG, "🎵 Cached WebSocket audio: ${audioBytes.size} bytes")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to cache audio: ${e.message}")
+                }
+            }
+
+            conversationRepository.insertLocalMessageWithId(
+                messageId = tempMessageId,
+                conversationId = conversationId,
+                content = text,
+                role = "assistant",
+                hasAudio = hasVoice,
+                waveform = message.waveform,
+                audioDurationMs = message.audioDurationMs
+            )
+
+            Log.d(TAG, "✅ Real-time sync: assistant message added to UI")
         }
     }
 

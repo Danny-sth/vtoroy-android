@@ -111,7 +111,12 @@ class DuqWebSocketClient @Inject constructor(
         @SerializedName("waveform") val waveform: List<Float>? = null,  // Audio waveform
         @SerializedName("audio_duration_ms") val audioDurationMs: Int? = null,  // Audio duration
         @SerializedName("error") val error: String? = null,
-        @SerializedName("timestamp") val timestamp: Long? = null
+        @SerializedName("timestamp") val timestamp: Long? = null,
+        // History sync fields (type: "new_message")
+        @SerializedName("message_id") val messageId: String? = null,
+        @SerializedName("conversation_id") val conversationId: String? = null,
+        @SerializedName("role") val role: String? = null,
+        @SerializedName("content") val content: String? = null
     )
 
     /**
